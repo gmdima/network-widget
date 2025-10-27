@@ -4,6 +4,10 @@ on:
   push:
     tags:
       - 'v*.*.*'
+  release:
+    types:
+      - published
+  workflow_dispatch:
 
 jobs:
   build-and-release:
@@ -36,12 +40,38 @@ jobs:
         run: |
           zip -r module.zip module.json LICENSE styles/ scripts/ templates/ images/ lang/
 
-      - name: Create GitHub Release
+      # Only create a new GitHub Release when the workflow was triggered by pushing a tag.
+      - name: Create GitHub Release (on tag push)
+        if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
           files: |
             module.zip
             module.json
           tag_name: ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # When the workflow is triggered by a release published event (e.g., created via the UI),
+      # upload assets to the existing release instead of trying to create it again.
+      - name: Upload module.zip to published release
+        if: github.event_name == 'release'
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: module.zip
+          asset_name: module.zip
+          asset_content_type: application/zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload module.json to published release
+        if: github.event_name == 'release'
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: module.json
+          asset_name: module.json
+          asset_content_type: application/json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
