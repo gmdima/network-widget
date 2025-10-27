@@ -1,0 +1,530 @@
+/* Floating image filters and animations */
+.network-widget .floating-img-anim-fade {
+    animation: floating-img-fade 2s infinite alternate;
+}
+.network-widget .floating-img-anim-pulse {
+    animation: floating-img-pulse 1.2s infinite;
+}
+ .network-widget .floating-img-anim-spin {
+    animation: floating-img-spin 2s linear infinite;
+    transform-origin: 50% 50%;
+    /* For cross-browser compatibility */
+    -webkit-transform-origin: 50% 50%;
+    -ms-transform-origin: 50% 50%;
+}
+@keyframes floating-img-fade {
+    0% { opacity: 1; }
+    100% { opacity: 0.3; }
+}
+@keyframes floating-img-pulse {
+    0% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.12); opacity: 0.7; }
+    100% { transform: scale(1); opacity: 1; }
+}
+@keyframes floating-img-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/*
+ * ---------------------------------------------
+ * Timeline Widget
+ * ---------------------------------------------
+ */
+
+.cc-widget.timeline-widget {
+    background: var(--cc-card-bg);
+    border: 1px solid var(--cc-border-light);
+    border-radius: 4px;
+    margin: 10px 0;
+    overflow: hidden;
+}
+
+.timeline-container {
+    background: #fff;
+    position: relative;
+}
+
+/* Timeline event categories */
+.timeline-event-default {
+    background-color: #3366cc !important;
+    border-color: #2255aa !important;
+}
+
+.timeline-event-battle {
+    background-color: #dc3912 !important;
+    border-color: #bb2a0f !important;
+}
+
+.timeline-event-discovery {
+    background-color: #ff9900 !important;
+    border-color: #e68900 !important;
+}
+
+.timeline-event-social {
+    background-color: #109618 !important;
+    border-color: #0d7f15 !important;
+}
+
+.timeline-event-travel {
+    background-color: #990099 !important;
+    border-color: #7a007a !important;
+}
+
+.timeline-event-rest {
+    background-color: #0099c6 !important;
+    border-color: #007da3 !important;
+}
+
+.timeline-event-quest {
+    background-color: #dd4477 !important;
+    border-color: #c23862 !important;
+}
+
+.timeline-event-milestone {
+    background-color: #66aa00 !important;
+    border-color: #558800 !important;
+}
+
+/* Timeline controls */
+.timeline-widget .widget-controls {
+    padding: 10px;
+    background: var(--cc-main-bg);
+    border-top: 1px solid var(--cc-border-light);
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.timeline-widget .widget-controls button {
+    padding: 6px 12px;
+    border: 1px solid var(--cc-border-medium);
+    background: var(--cc-card-bg);
+    color: var(--cc-main-text);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.2s ease;
+}
+
+.timeline-widget .widget-controls button:hover {
+    background: var(--cc-accent10);
+    border-color: var(--cc-accent);
+}
+
+.timeline-widget .widget-controls button:active {
+    transform: translateY(1px);
+}
+
+.timeline-widget .widget-controls button i {
+    font-size: 11px;
+}
+
+/* Vis-timeline overrides for better theming */
+.timeline-widget .vis-timeline {
+    border: none;
+    font-family: var(--cc-font-body);
+}
+
+.timeline-widget .vis-panel.vis-background {
+    background: #fafafa;
+}
+
+.timeline-widget .vis-panel.vis-center {
+    border-left: 1px solid var(--cc-border-light);
+    border-right: 1px solid var(--cc-border-light);
+}
+
+.timeline-widget .vis-labelset .vis-label {
+    color: var(--cc-main-text);
+    border-bottom: 1px solid var(--cc-border-light);
+}
+
+.timeline-widget .vis-time-axis .vis-text {
+    color: var(--cc-main-text);
+}
+
+.timeline-widget .vis-item {
+    border-color: var(--cc-border-medium);
+    color: #fff;
+    font-weight: 500;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+
+.timeline-widget .vis-item.vis-selected {
+    box-shadow: 0 0 0 2px var(--cc-accent);
+}
+
+.timeline-widget .vis-item.vis-point {
+    border-radius: 50%;
+}
+
+.timeline-widget .vis-item.vis-box,
+.timeline-widget .vis-item.vis-range {
+    border-radius: 3px;
+}
+
+/* Hide time axis for custom event timelines */
+.timeline-widget .vis-time-axis {
+    display: none;
+}
+
+.timeline-widget .vis-panel.vis-bottom {
+    height: 0 !important;
+}
+
+.timeline-widget .vis-panel.vis-top {
+    height: 0 !important;
+}
+
+/* Dark theme adjustments */
+.campaign-codex.dark .timeline-widget .vis-panel.vis-background {
+    background: #2a2a2a;
+}
+
+.campaign-codex.dark .timeline-widget .vis-labelset .vis-label {
+    color: var(--cc-sidebar-text);
+    background: var(--cc-sidebar-bg);
+}
+
+.campaign-codex.dark .timeline-widget .vis-time-axis .vis-text {
+    color: var(--cc-sidebar-text);
+}
+
+/*
+ * ---------------------------------------------
+ * Network Widget
+ * ---------------------------------------------
+ */
+
+.cc-widget.network-widget {
+    background: var(--cc-card-bg);
+    border: 1px solid var(--cc-border-light);
+    border-radius: 4px;
+    margin: 10px 0;
+    overflow: hidden;
+    width: 682px;
+}
+
+.network-widget .network-controls {
+    padding: 10px;
+    background: var(--cc-main-bg);
+    border-bottom: 1px solid var(--cc-border-light);
+    display: flex;
+    gap: 6px;
+    flex-wrap: nowrap;
+    align-items: center;
+justify-content: center;
+    width: 650px;
+}
+
+.network-widget .network-controls button {
+    padding: 6px 10px;
+    border: 1px solid var(--cc-border-medium);
+    background: var(--cc-card-bg);
+    color: var(--cc-main-text);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
+    width: auto;
+}
+
+.network-widget .network-controls button:hover {
+    background: var(--cc-accent10);
+    border-color: var(--cc-accent);
+}
+
+.network-widget .network-controls button:active {
+    transform: translateY(1px);
+}
+
+.network-widget .network-controls button.active {
+    background: #ff6b6b;
+    border-color: #ff5252;
+    color: white;
+}
+
+.network-widget .network-controls button.create-annotation {
+    background: var(--cc-accent);
+    border-color: var(--cc-accent);
+    color: white;
+}
+
+.network-widget .network-controls button.create-annotation:hover {
+    background: var(--cc-accent80);
+    border-color: var(--cc-accent80);
+}
+
+.network-widget .network-controls button i {
+    font-size: 11px;
+}
+
+.network-widget .network-container {
+    position: relative;
+width: 650px;
+    height: 520px;
+    overflow: hidden;
+    background: #f9f9f9;
+    min-width: 300px;
+}
+.campaign-codex .cc-widget.network-widget .cc-widget-container {
+    width: 693px;
+    /* background-color: var(--cc-accent10); */
+}
+.network-widget .network-container svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.network-widget .network-instructions {
+    padding: 8px 10px;
+    background: var(--cc-main-bg);
+    border-top: 1px solid var(--cc-border-light);
+    font-size: 12px;
+    color: var(--cc-text-muted);
+    font-style: italic;
+        width: 650px;
+}
+
+/* Network elements styling */
+.network-widget .node-group {
+    cursor: pointer;
+}
+
+.network-widget .node-group:hover .node {
+    stroke-width: 3px;
+    stroke: var(--cc-accent);
+}
+
+.network-widget .node-image {
+    pointer-events: none;
+}
+
+.network-widget .node-label {
+    pointer-events: none;
+    user-select: none;
+}
+
+.network-widget .link {
+    pointer-events: none;
+}
+
+.network-widget .link-label {
+    user-select: none;
+    font-weight: bold;
+    font-size: 11px;
+    fill: #2c5aa0;
+    stroke: white;
+    stroke-width: 3;
+    paint-order: stroke;
+    pointer-events: all;
+    transition: all 0.2s ease;
+}
+
+.network-widget .link-label:hover {
+    fill: #1e3d6f;
+    font-size: 12px;
+}
+
+.network-widget .link-label.clickable {
+    cursor: pointer;
+}
+
+.network-widget .link-label.empty {
+    fill: #999;
+    font-style: italic;
+}
+
+/* Drag over state */
+.network-widget .network-container.drag-over {
+    background: rgba(212, 175, 55, 0.1);
+    border: 2px dashed var(--cc-accent);
+}
+
+/* Dark theme adjustments */
+.campaign-codex.dark .network-widget .network-container {
+    background: #2a2a2a;
+}
+
+.campaign-codex.dark .network-widget .network-container svg {
+    background: #2a2a2a;
+}
+
+.campaign-codex.dark .network-widget .node-label {
+    fill: var(--cc-sidebar-text);
+}
+
+.campaign-codex.dark .network-widget .link-label {
+    fill: #87ceeb;
+    stroke: #1a1a1a;
+}
+
+.campaign-codex.dark .network-widget .link-label:hover {
+    fill: #b8e6ff;
+}
+
+.campaign-codex.dark .network-widget .link-label.empty {
+    fill: #666;
+}
+
+/* Styles for unknown/non-observable entities */
+.network-widget .node-unknown {
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.network-widget .node-unknown:hover {
+    fill: #888;
+    stroke-width: 3;
+}
+
+.network-widget .node-question {
+    cursor: pointer;
+    pointer-events: none;
+    user-select: none;
+}
+
+/* Dark theme adjustments for unknown nodes */
+.campaign-codex.dark .network-widget .node-unknown {
+    fill: #444;
+    stroke: #666;
+}
+
+.campaign-codex.dark .network-widget .node-unknown:hover {
+    fill: #555;
+}
+
+/* Annotation styles - D3 Annotation Library Integration */
+.network-widget {
+    --annotation-color: var(--cc-primary);
+}
+
+/* Base annotation styles from d3-annotation */
+.network-widget .annotation path {
+    stroke: var(--annotation-color);
+    fill: none;
+}
+
+.network-widget .annotation text,
+.network-widget .annotation .annotation-connector .connector-dot,
+.network-widget .annotation path.connector-arrow,
+.network-widget .annotation.callout.rect path.subject {
+    fill: var(--annotation-color);
+}
+
+.network-widget .annotation-note-title {
+    font-weight: bold;
+    font-family: var(--cc-font-heading);
+    font-size: 14px;
+    fill: var(--cc-primary);
+    margin-bottom: 4px;
+    margin-left: 4px;
+    margin-right: 4px;
+}
+
+.network-widget .annotation-note-bg {
+    fill: var(--cc-card-bg);
+    stroke: var(--cc-border-medium);
+    stroke-width: 1;
+    rx: 3;
+    opacity: 0.95;
+}
+
+.network-widget .annotation.callout.rect path.subject {
+    fill-opacity: .1;
+}
+
+.network-widget .annotation.badge path.subject-pointer, 
+.network-widget .annotation.badge path.subject {
+    fill: var(--annotation-color);
+    stroke-width: 3px;
+    stroke-linecap: round;
+} 
+
+.network-widget .annotation.badge path.subject-ring {
+    fill: white;
+    stroke-width: 3px;
+}
+
+.network-widget .annotation.badge .badge-text {
+    fill: white;
+    font-size: .7em;
+}
+
+/* Campaign Codex specific annotation styles */
+.network-widget .annotation {
+    cursor: pointer;
+    user-select: none;
+}
+
+.network-widget .annotation.draggable {
+    cursor: grab;
+}
+
+.network-widget .annotation.draggable:active {
+    cursor: grabbing;
+}
+
+.network-widget .annotation-note-content {
+    font-family: var(--cc-font-body);
+    font-size: 13px;
+    margin: 2px 0;
+}
+
+.network-widget .annotation-note-label {
+    fill: var(--cc-main-text);
+    font-size: 12px;
+    margin: 1px 0;
+}
+
+/* Hover effects */
+.network-widget .annotation:hover .annotation-note-bg {
+    stroke: var(--cc-accent);
+    stroke-width: 3;
+}
+
+.network-widget .annotation:hover .annotation-note-title {
+    fill: var(--cc-accent);
+}
+
+/* Edit mode styles */
+.network-widget .editable .annotation-subject, 
+.network-widget .editable .annotation-note {
+    cursor: move;
+}
+
+.network-widget circle.handle {
+    stroke-dasharray: 5;
+    stroke: var(--annotation-color);
+    fill: rgba(255, 255, 255, .2);
+    cursor: move;
+    stroke-opacity: .4;
+}
+
+/* Dark theme adjustments for annotations */
+.campaign-codex.dark .network-widget {
+    --annotation-color: var(--cc-accent);
+}
+
+.campaign-codex.dark .network-widget .annotation-note-label {
+    fill: var(--cc-sidebar-text);
+}
+
+.campaign-codex.dark .network-widget .annotation-note-bg {
+    fill: #3a3a3a;
+    stroke: #666;
+}
+
+.campaign-codex.dark .network-widget .annotation-note-title {
+    fill: var(--cc-accent);
+}

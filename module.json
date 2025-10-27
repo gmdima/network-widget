@@ -1,0 +1,32 @@
+{
+  "id": "network-widget",
+  "title": "Network Widget",
+  "version": "0.9.63",
+  "scripts": ["scripts/vis-timeline/vis-timeline.min.js"],
+  "esmodules": ["scripts/main.js"],
+  "languages": [
+    {
+      "lang": "en",
+      "name": "English",
+      "path": "lang/en.json"
+    }
+  ],
+  "compatibility": {
+    "minimum": "13",
+    "verified": "13"
+  },
+  "url": "",
+  "readme": "",
+
+  "authors": [
+    {
+      "name": "DMKal",
+      "url": "",
+      "flags": {}
+    }
+  ],
+  "styles": ["styles/widget.css","scripts/vis-timeline/vis-timeline.min.css"],
+  "relationships": {
+    "systems": []
+  }
+}
