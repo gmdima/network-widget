@@ -1,7 +1,7 @@
 {
   "id": "network-widget",
   "title": "Network Widget",
-  "version": "1.0",
+  "version": "1.0.1",
   "scripts": ["scripts/vis-timeline/vis-timeline.min.js"],
   "esmodules": ["scripts/main.js"],
   "languages": [
