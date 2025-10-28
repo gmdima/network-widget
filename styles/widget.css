@@ -1,27 +1,36 @@
+/* Position controls differently for non-GMs (less buttons, move lower/right) */
+.network-widget.not-gm .network-controls-float {
+    top: 150px;
+    left: 61px;
+}
 /* DialogV1 Floating Image Edit Buttons */
+/* DialogV1 Floating Image Edit Buttons - compact and centered */
 .dialog-buttons {
-    display: flex;
-    gap: 5px;
-    justify-content: flex-end;
-    margin-top: 2px;
-    padding: 2px 0 0 0;
+    display: flex!important;
+    gap: 8px;
+    justify-content: center;
+    margin-top: 12px;
+    padding: 4px 0 0 0;
     flex-wrap: wrap!important;
 }
 .dialog-button {
     background: linear-gradient(90deg, #23272b 0%, #343a40 100%);
     color: #fff;
-    border: 1.5px solid #444;
-    border-radius: 6px;
-    padding: 8px 16px;
-    font-size: 15px;
+    border: 1.2px solid #444;
+    border-radius: 5px;
+    padding: 5px 12px;
+    font-size: 13px;
     font-family: 'Segoe UI', Arial, sans-serif;
     font-weight: 500;
     cursor: pointer;
     display: flex;
     align-items: center;
-    gap: 7px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+    gap: 5px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
     transition: background 0.18s, border 0.18s, color 0.18s, transform 0.12s;
+    min-width: 90px;
+    max-width: 140px;
+    justify-content: center;
 }
 .dialog-button:hover {
     background: linear-gradient(90deg, #2d3238 0%, #495057 100%);
@@ -76,8 +85,8 @@
     border-color: #5c6bc0;
 }
 .dialog-button i {
-    font-size: 15px;
-    margin-right: 4px;
+    font-size: 14px;
+    margin-right: 3px;
 }
 /* Rich HTML tooltip styling for d3-tip tooltips */
 .d3-tip.network-html-tooltip {
@@ -405,16 +414,56 @@
     width: 682px;
 }
 
-.network-widget .network-controls {
-    padding: 10px;
-    background: var(--cc-main-bg);
-    border-bottom: 1px solid var(--cc-border-light);
+
+/* Floating network controls over the canvas */
+.network-widget .network-controls-float {
+    position: absolute;
+    top: 65px;
+    left: 25px;
+    z-index: 10;
     display: flex;
-    gap: 6px;
-    flex-wrap: nowrap;
-    align-items: center;
-justify-content: center;
+    flex-direction: column;
+    gap: 3px;
+    
+    border-radius: 10px;
+    padding: 4px 4px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.10);
+    opacity: 0.10;
+    transition: opacity 0.35s;
+    pointer-events: auto;
+}
+.network-widget .network-controls-float:hover,
+.network-widget .network-controls-float:focus-within {
+    opacity: 1;
+    
+}
+.network-widget .network-controls-float button {
+    margin: 0 0 2px 0;
+    min-width: 90px;
+    background: var(--cc-card-bg, #23272b);
+    border: 1px solid var(--cc-border-medium, #444);
+    color: var(--cc-main-text, #fff);
+    border-radius: 6px;
+    font-size: 10px;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    font-weight: 500;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    transition: background 0.18s, border 0.18s, color 0.18s, transform 0.12s;
+    justify-content: flex-start;
+    opacity: 1;
+}
+.network-widget .network-controls-float button:hover {
+    background: var(--cc-accent10, #2d3238);
+    border-color: var(--cc-accent, #ffd700);
+    color: var(--cc-accent, #ffd700);
+}
+.network-widget .network-container {
+    position: relative;
     width: 650px;
+    height: 520px;
+    overflow: hidden;
+    background: #000000;
+    min-width: 300px;
 }
 
 .network-widget .network-controls button {
