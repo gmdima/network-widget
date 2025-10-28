@@ -7,15 +7,11 @@ class NetworkWidget extends CampaignCodexWidget {
         this.simulation = null;
         this.nodes = [];
         this.links = [];
-        this.annotations = []; // Add annotations array
         this.nodeElements = null;
         this.linkElements = null;
-        this.annotationElements = null; // Add annotation elements
         this.nodeMap = new Map(); // Store actor UUID to node mapping
         this.linkingMode = false;
-        this.annotationMode = false; // Add annotation mode
         this.selectedNode = null;
-        this.selectedAnnotation = null; // Add selected annotation
         this.widgetData = null;
         this.container = null;
         this.width = 800;
@@ -26,6 +22,8 @@ class NetworkWidget extends CampaignCodexWidget {
 
         this.floatingImages = [];
         this.selectedFloatingImageId = null;
+        this.isFullscreen = false;
+        this.fullscreenOverlay = null;
     }
 
     // Static method to store zoom state
@@ -60,20 +58,34 @@ class NetworkWidget extends CampaignCodexWidget {
                             <i class="fas fa-link"></i> Link Mode
                         </button>
                         <button type="button" class="add-empty-node" title="Add an empty node">
-                            <i class="fas fa-circle"></i> Add Empty Node
+                            <i class="fas fa-circle"></i> Empty Node
                         </button>
                         <button type="button" class="clear-network" title="Clear all nodes and links">
-                            <i class="fas fa-trash"></i> Clear All
+                            <i class="fas fa-trash"></i> Clear
                         </button>
                     ` : ''}
                     <button type="button" class="reset-zoom" title="Reset zoom to fit all nodes">
-                        <i class="fas fa-search"></i> Reset Zoom
+                        <i class="fas fa-search"></i> Zoom
                     </button>
+                    <button type="button" class="lock-nodes" title="Lock/unlock all nodes">
+                        <i class="fas fa-lock"></i> <span class="lock-nodes-label">Lock </span>
+                    </button>
+                    <button type="button" class="toggle-fullscreen" title="Toggle fullscreen">
+                        <i class="fas fa-expand"></i> Fullscreen
+                    </button>
+                    ${this.isGM ? `
+                        <button type="button" class="export-network" title="Export network map as JSON">
+                            <i class="fas fa-download"></i> Save
+                        </button>
+                        <button type="button" class="import-network" title="Import network map from JSON">
+                            <i class="fas fa-upload"></i> Load
+                        </button>
+                    ` : ''}
                 </div>
                 <div id="network-${this.widgetId}" class="network-container"></div>
                 <div class="network-instructions">
                     ${this.isGM ? 
-                        'Drag actors, items, journals, scenes, or roll tables from the sidebar to add them to the network. Click "Link Mode" and click two nodes to create/remove links. Click "Add Empty Node" to add a label-only node. Click "Create Annotation" to add text annotations. Click "Annotation Arrange" to move existing annotations. Click link labels to edit relationship types. Use mouse wheel to zoom.' :
+                        'Drag actors, items, journals, scenes, or roll tables from the sidebar to add them to the network. Click "Link Mode" and click two nodes to create/remove links. Click "Add Empty Node" to add a label-only node. Click link labels to edit relationship types. Use mouse wheel to zoom.' :
                         'View relationships between documents in this network diagram. Use mouse wheel to zoom. Click nodes to open their sheets.'
                     }
                 </div>
@@ -90,13 +102,12 @@ class NetworkWidget extends CampaignCodexWidget {
         console.log('Network Widget | Current user role:', game.user.role);
         console.log('Network Widget | Document flags:', this.document.flags);
         
-        this.widgetData = savedData || { nodes: [], links: [], annotations: [], linkingMode: false, annotationMode: false, selectedNodeId: null };
+        this.widgetData = savedData || { nodes: [], links: [], linkingMode: false,  selectedNodeId: null };
         console.log('Network Widget | Final widgetData after fallback:', this.widgetData);
         
         // Restore linking mode state
         this.linkingMode = this.widgetData.linkingMode || false;
-        this.annotationMode = this.widgetData.annotationMode || false;
-        
+this.nodesLocked = this.widgetData.nodesLocked || false;
         // Set up container
         this.container = htmlElement.querySelector(`#network-${this.widgetId}`);
         if (!this.container) {
@@ -107,9 +118,9 @@ class NetworkWidget extends CampaignCodexWidget {
         // Load D3.js if not already loaded
         try {
             await this._loadD3();
-            await this._loadD3Annotation();
+
         } catch (error) {
-            console.error('Campaign Codex | Failed to load D3.js or d3-annotation:', error);
+            console.error('Campaign Codex | Failed to load D3.js:', error);
             this.container.innerHTML = '<div style="padding: 20px; text-align: center; color: red;">Failed to load required libraries. Please check your internet connection.</div>';
             return;
         }
@@ -139,11 +150,6 @@ class NetworkWidget extends CampaignCodexWidget {
             const linkButton = htmlElement.querySelector('.toggle-linking');
             linkButton?.addEventListener('click', this._toggleLinkingMode.bind(this));
 
-            const annotationButton = htmlElement.querySelector('.toggle-annotation');
-            annotationButton?.addEventListener('click', this._toggleAnnotationMode.bind(this));
-
-            const createAnnotationButton = htmlElement.querySelector('.create-annotation');
-            createAnnotationButton?.addEventListener('click', this._onCreateAnnotationClick.bind(this));
 
             // Add Empty Node button
             const addEmptyNodeButton = htmlElement.querySelector('.add-empty-node');
@@ -217,11 +223,7 @@ class NetworkWidget extends CampaignCodexWidget {
                 linkButton.style.color = 'white';
             }
 
-            if (this.annotationMode && annotationButton) {
-                annotationButton.classList.add('active');
-                annotationButton.style.backgroundColor = '#28a745';
-                annotationButton.style.color = 'white';
-            }
+
 
             htmlElement.querySelector('.clear-network')?.addEventListener('click', this._clearNetwork.bind(this));
 
@@ -233,6 +235,32 @@ class NetworkWidget extends CampaignCodexWidget {
         
         // Reset zoom is available for everyone
         htmlElement.querySelector('.reset-zoom')?.addEventListener('click', this._resetZoom.bind(this));
+        
+        // Lock nodes button (everyone)
+        const lockBtn = htmlElement.querySelector('.lock-nodes');
+        if (lockBtn) {
+            // Restore state from widgetData
+            this.nodesLocked = !!this.widgetData.nodesLocked;
+            this._updateLockNodesButton(lockBtn);
+            lockBtn.addEventListener('click', async () => {
+                this.nodesLocked = !this.nodesLocked;
+                this.widgetData.nodesLocked = this.nodesLocked;
+                await this._saveNetworkData();
+                // After saving, reload state from widgetData in case of refresh
+                this.nodesLocked = !!this.widgetData.nodesLocked;
+                this._updateLockNodesButton(lockBtn);
+                this._updateNetwork();
+            });
+        }
+        
+        // Fullscreen toggle is available for everyone
+        htmlElement.querySelector('.toggle-fullscreen')?.addEventListener('click', this._toggleFullscreen.bind(this));
+        
+        // Export and import are only for GMs
+        if (this.isGM) {
+            htmlElement.querySelector('.export-network')?.addEventListener('click', this._exportNetwork.bind(this));
+            htmlElement.querySelector('.import-network')?.addEventListener('click', this._importNetwork.bind(this));
+        }
         
         // Update instructions based on current state
         this._updateInstructions();
@@ -308,63 +336,7 @@ class NetworkWidget extends CampaignCodexWidget {
         this._saveNetworkData();
     }
 
-    _addResizeHandles(group, d) {
-        const handleSize = 10;
-        const corners = [
-            { x: d.x, y: d.y },
-            { x: d.x + d.width, y: d.y },
-            { x: d.x + d.width, y: d.y + d.height },
-            { x: d.x, y: d.y + d.height }
-        ];
-        group.selectAll('.resize-handle').data(corners).enter()
-            .append('rect')
-            .attr('class', 'resize-handle')
-            .attr('x', c => c.x - handleSize/2)
-            .attr('y', c => c.y - handleSize/2)
-            .attr('width', handleSize)
-            .attr('height', handleSize)
-            .attr('fill', '#fff')
-            .attr('stroke', '#333')
-            .attr('stroke-width', 2)
-            .style('cursor', (c, i) => ['nwse-resize','nesw-resize','nwse-resize','nesw-resize'][i])
-            .call(d3.drag()
-                .on('drag', (event, c, i) => this._onResizeHandleDrag(event, d, i))
-                .on('end', () => this._saveNetworkData())
-            );
-    }
 
-    _onResizeHandleDrag(event, d, handleIndex) {
-        const minSize = 20;
-        let { x, y, width, height } = d;
-        switch (handleIndex) {
-            case 0: // top-left
-                width += x - (x + event.dx);
-                height += y - (y + event.dy);
-                x += event.dx;
-                y += event.dy;
-                break;
-            case 1: // top-right
-                width += event.dx;
-                height += y - (y + event.dy);
-                y += event.dy;
-                break;
-            case 2: // bottom-right
-                width += event.dx;
-                height += event.dy;
-                break;
-            case 3: // bottom-left
-                width += x - (x + event.dx);
-                height += event.dy;
-                x += event.dx;
-                break;
-        }
-    d.x = x;
-    d.y = y;
-    d.width = Math.max(minSize, width);
-    d.height = Math.max(minSize, height);
-    this._updateNetwork(false);
-    this._saveNetworkData();
-    }
 _onFloatingImageContextMenu(event, d) {
     event.preventDefault();
     event.stopPropagation();
@@ -373,13 +345,89 @@ _onFloatingImageContextMenu(event, d) {
     const filterValue = d.filter || '';
     const animationValue = d.animation || '';
     const linkedUuid = d.linkedUuid || '';
+    const rotationValue = d.rotation || 0;
+    const opacityValue = d.opacity !== undefined ? d.opacity : 100;
+    const borderColor = d.borderColor || '#000000';
+    const borderWidth = d.borderWidth || 0;
+    const borderStyle = d.borderStyle || 'solid';
+    const shadowEnabled = d.shadowEnabled !== undefined ? d.shadowEnabled : false;
+    const shadowColor = d.shadowColor || '#000000';
+    const shadowBlur = d.shadowBlur !== undefined ? d.shadowBlur : 5;
+    const shadowOffsetX = d.shadowOffsetX !== undefined ? d.shadowOffsetX : 3;
+    const shadowOffsetY = d.shadowOffsetY !== undefined ? d.shadowOffsetY : 3;
     let dialogRendered = null;
+    const isLocked = d.locked || false;
     new Dialog({
-        title: 'Edit Image Overlay',
+        title: `Edit Image Overlay ${isLocked ? '🔒' : ''}`,
         content: `
             <form>
+                <div style="margin-bottom:8px; padding:8px; background:${isLocked ? '#fff3cd' : 'transparent'}; border-radius:4px;">
+                    <strong>${isLocked ? '🔒 This image is locked' : '🔓 This image is unlocked'}</strong>
+                    <p style="margin:4px 0 0 0; font-size:11px; color:#666;">${isLocked ? 'Use Lock/Unlock button to enable moving and resizing' : 'Use Lock/Unlock button to prevent accidental changes'}</p>
+                </div>
                 <div style="margin-bottom:8px;">
                     <label>Width: <input type="number" id="img-width" value="${widthValue}" min="20" style="width:60px;"></label>
+                </div>
+                <div style="margin-bottom:8px;">
+                    <label>Rotation: <input type="number" id="img-rotation" value="${rotationValue}" min="-360" max="360" style="width:60px;"> degrees</label>
+                </div>
+                <div style="margin-bottom:8px;">
+                    <label>Opacity: <input type="range" id="img-opacity" value="${opacityValue}" min="0" max="100" style="width:100px; vertical-align:middle;"> <span id="opacity-value">${opacityValue}%</span></label>
+                </div>
+                <div style="margin-bottom:8px; padding:8px; background:#f0f0f0; border-radius:4px;">
+                    <strong style="display:block; margin-bottom:6px;">Border/Frame:</strong>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:6px;">
+                        <div>
+                            <label style="display:block; font-size:11px; margin-bottom:2px;">Color:</label>
+                            <input type="color" id="img-border-color" value="${borderColor}" style="width:100%; height:28px;">
+                        </div>
+                        <div>
+                            <label style="display:block; font-size:11px; margin-bottom:2px;">Width (px):</label>
+                            <input type="number" id="img-border-width" value="${borderWidth}" min="0" max="50" style="width:100%; padding:4px;">
+                        </div>
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:11px; margin-bottom:2px;">Style:</label>
+                        <select id="img-border-style" style="width:100%; padding:4px;">
+                            <option value="solid" ${borderStyle === 'solid' ? 'selected' : ''}>Solid</option>
+                            <option value="dashed" ${borderStyle === 'dashed' ? 'selected' : ''}>Dashed</option>
+                            <option value="dotted" ${borderStyle === 'dotted' ? 'selected' : ''}>Dotted</option>
+                            <option value="double" ${borderStyle === 'double' ? 'selected' : ''}>Double</option>
+                            <option value="groove" ${borderStyle === 'groove' ? 'selected' : ''}>Groove</option>
+                            <option value="ridge" ${borderStyle === 'ridge' ? 'selected' : ''}>Ridge</option>
+                            <option value="inset" ${borderStyle === 'inset' ? 'selected' : ''}>Inset</option>
+                            <option value="outset" ${borderStyle === 'outset' ? 'selected' : ''}>Outset</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="margin-bottom:8px; padding:8px; background:#f0f0f0; border-radius:4px;">
+                    <strong style="display:block; margin-bottom:6px;">Shadow Effects:</strong>
+                    <div style="margin-bottom:6px;">
+                        <label style="display:flex; align-items:center; gap:8px;">
+                            <input type="checkbox" id="img-shadow-enabled" ${shadowEnabled ? 'checked' : ''}>
+                            <span>Enable Drop Shadow</span>
+                        </label>
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:6px; opacity:${shadowEnabled ? 1 : 0.5}; pointer-events:${shadowEnabled ? 'auto' : 'none'};">
+                        <div>
+                            <label style="display:block; font-size:11px; margin-bottom:2px;">Color:</label>
+                            <input type="color" id="img-shadow-color" value="${shadowColor}" style="width:100%; height:28px;">
+                        </div>
+                        <div>
+                            <label style="display:block; font-size:11px; margin-bottom:2px;">Blur (px):</label>
+                            <input type="number" id="img-shadow-blur" value="${shadowBlur}" min="0" max="20" style="width:100%; padding:4px;">
+                        </div>
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; opacity:${shadowEnabled ? 1 : 0.5}; pointer-events:${shadowEnabled ? 'auto' : 'none'};">
+                        <div>
+                            <label style="display:block; font-size:11px; margin-bottom:2px;">X Offset (px):</label>
+                            <input type="number" id="img-shadow-offset-x" value="${shadowOffsetX}" min="-10" max="10" style="width:100%; padding:4px;">
+                        </div>
+                        <div>
+                            <label style="display:block; font-size:11px; margin-bottom:2px;">Y Offset (px):</label>
+                            <input type="number" id="img-shadow-offset-y" value="${shadowOffsetY}" min="-10" max="10" style="width:100%; padding:4px;">
+                        </div>
+                    </div>
                 </div>
                 <div style="margin-bottom:8px;">
                     <label>Filter: 
@@ -415,6 +463,40 @@ _onFloatingImageContextMenu(event, d) {
             </form>
         `,
         buttons: {
+            toggleLock: {
+                label: isLocked ? 'Unlock Image' : 'Lock Image',
+                callback: () => {
+                    d.locked = !d.locked;
+                    this._updateNetwork();
+                    this._saveNetworkData();
+                    ui.notifications.info(d.locked ? 'Image locked - cannot be moved or resized' : 'Image unlocked - can be moved and resized');
+                },
+                icon: isLocked ? '<i class="fas fa-unlock"></i>' : '<i class="fas fa-lock"></i>'
+            },
+            sendToFront: {
+                label: 'Send to Front',
+                callback: () => {
+                    // Find max z-index and set this image to max + 1
+                    const maxZ = Math.max(0, ...this.floatingImages.map(img => img.zIndex || 0));
+                    d.zIndex = maxZ + 1;
+                    this._updateNetwork();
+                    this._saveNetworkData();
+                    ui.notifications.info('Image moved to front');
+                },
+                icon: '<i class="fas fa-arrow-up"></i>'
+            },
+            sendToBack: {
+                label: 'Send to Back',
+                callback: () => {
+                    // Find min z-index and set this image to min - 1
+                    const minZ = Math.min(0, ...this.floatingImages.map(img => img.zIndex || 0));
+                    d.zIndex = minZ - 1;
+                    this._updateNetwork();
+                    this._saveNetworkData();
+                    ui.notifications.info('Image moved to back');
+                },
+                icon: '<i class="fas fa-arrow-down"></i>'
+            },
             delete: {
                 label: 'Delete',
                 callback: () => {
@@ -432,8 +514,21 @@ _onFloatingImageContextMenu(event, d) {
                     const w = parseInt(html.find('#img-width').val(), 10);
                     d.width = Math.max(20, w);
                     d.height = Math.max(20, Math.round(d.width / aspectRatio));
+                    const rotation = parseInt(html.find('#img-rotation').val(), 10);
+                    d.rotation = Math.max(-360, Math.min(360, rotation || 0));
+                    const opacity = parseInt(html.find('#img-opacity').val(), 10);
+                    d.opacity = Math.max(0, Math.min(100, opacity));
+                    d.borderColor = html.find('#img-border-color').val();
+                    d.borderWidth = parseInt(html.find('#img-border-width').val(), 10) || 0;
+                    d.borderStyle = html.find('#img-border-style').val();
                     d.filter = html.find('#img-filter').val();
                     d.animation = html.find('#img-animation').val();
+                    // Save shadow settings
+                    d.shadowEnabled = html.find('#img-shadow-enabled').is(':checked');
+                    d.shadowColor = html.find('#img-shadow-color').val();
+                    d.shadowBlur = parseInt(html.find('#img-shadow-blur').val(), 10) || 5;
+                    d.shadowOffsetX = parseInt(html.find('#img-shadow-offset-x').val(), 10) || 3;
+                    d.shadowOffsetY = parseInt(html.find('#img-shadow-offset-y').val(), 10) || 3;
                     // Save linked UUID
                     d.linkedUuid = html.find('#img-linked-uuid').data('linkedUuid') || '';
                     this._updateNetwork();
@@ -445,6 +540,24 @@ _onFloatingImageContextMenu(event, d) {
         default: 'ok',
         render: html => {
             dialogRendered = html;
+            // Update opacity display value in real-time
+            const opacitySlider = html.find('#img-opacity');
+            const opacityDisplay = html.find('#opacity-value');
+            opacitySlider.on('input', () => {
+                opacityDisplay.text(opacitySlider.val() + '%');
+            });
+            // Handle shadow enable/disable toggle
+            const shadowCheckbox = html.find('#img-shadow-enabled');
+            const shadowControls = html.find('#img-shadow-color, #img-shadow-blur, #img-shadow-offset-x, #img-shadow-offset-y').closest('div').parent();
+            shadowCheckbox.on('change', function() {
+                const isEnabled = $(this).is(':checked');
+                html.find('#img-shadow-color, #img-shadow-blur, #img-shadow-offset-x, #img-shadow-offset-y')
+                    .prop('disabled', !isEnabled)
+                    .closest('div').parent().css({
+                        'opacity': isEnabled ? 1 : 0.5,
+                        'pointer-events': isEnabled ? 'auto' : 'none'
+                    });
+            });
             // Setup drag-and-drop for linked document
             const dropZone = html.find('#img-linked-uuid');
             dropZone.on('dragover', ev => {
@@ -495,17 +608,13 @@ _onFloatingImageContextMenu(event, d) {
     _updateInstructions() {
         const instructions = this.container?.parentElement?.querySelector('.network-instructions');
         if (instructions) {
-            if (this.annotationMode) {
-                instructions.textContent = 'Annotation Arrange Mode: Click annotations to edit. Drag annotations to reposition. Right-click to delete.';
-                instructions.style.fontWeight = 'bold';
-                instructions.style.color = '#28a745';
-            } else if (this.linkingMode) {
+  if (this.linkingMode) {
                 instructions.textContent = 'Linking Mode: Click two nodes to create/remove links between them. Use mouse wheel to zoom.';
                 instructions.style.fontWeight = 'bold';
                 instructions.style.color = '#ff6b6b';
             } else {
                 instructions.textContent = this.isGM ? 
-                    'Drag actors, items, journals, scenes, or roll tables from the sidebar to add them to the network. Click "Link Mode" and click two nodes to create/remove links. Click "Create Annotation" to add text annotations. Click "Annotation Arrange" to move existing annotations. Click link labels to edit relationship types. Use mouse wheel to zoom.' :
+                    'Drag actors, items, journals, scenes, or roll tables from the sidebar to add them to the network. Click "Link Mode" and click two nodes to create/remove links. . Click link labels to edit relationship types. Use mouse wheel to zoom.' :
                     'View relationships between documents in this network diagram. Use mouse wheel to zoom. Click nodes to open their sheets.';
                 instructions.style.fontWeight = '';
                 instructions.style.color = '';
@@ -535,33 +644,6 @@ _onFloatingImageContextMenu(event, d) {
         });
     }
 
-    async _loadD3Annotation() {
-        // Check if d3-annotation is already loaded
-        if (typeof d3 !== 'undefined' && d3.annotation) {
-            return;
-        }
-
-        // Load d3-annotation from CDN (more reliable than local file)
-        return new Promise((resolve, reject) => {
-            const script = document.createElement('script');
-            script.src = 'https://unpkg.com/d3-svg-annotation@2.5.1/d3-annotation.min.js';
-            script.onload = () => {
-                // Double-check that d3.annotation is actually available
-                if (typeof d3 !== 'undefined' && d3.annotation) {
-                    console.log('Campaign Codex | d3-annotation loaded successfully from CDN');
-                    resolve();
-                } else {
-                    console.error('Campaign Codex | d3-annotation script loaded but d3.annotation not available');
-                    reject(new Error('d3-annotation not available after loading'));
-                }
-            };
-            script.onerror = () => {
-                console.error('Campaign Codex | Failed to load d3-annotation from CDN');
-                reject(new Error('Failed to load d3-annotation'));
-            };
-            document.head.appendChild(script);
-        });
-    }
 
     _initializeNetwork() {
         d3.select(this.container).selectAll("*").remove();
@@ -577,7 +659,7 @@ _onFloatingImageContextMenu(event, d) {
             .attr("width", this.width)
             .attr("height", this.height)
             .style("border", "1px solid #ccc")
-         .style("background", (typeof game !== 'undefined' && game.settings) ? game.settings.get('network-widget', 'backgroundColor') : '#f9f9f9');
+         .style("background", (typeof game !== 'undefined' && game.settings) ? game.settings.get('network-widget', 'backgroundColor') : '#000000ff');
 
         // Add SVG filter definitions for floating image effects, only once
         let floatingDefs = this.svg.select('defs');
@@ -596,6 +678,9 @@ _onFloatingImageContextMenu(event, d) {
         ensureFilter(floatingDefs, 'floating-img-filter-brightness', '<feComponentTransfer><feFuncR type="linear" slope="1.5"/><feFuncG type="linear" slope="1.5"/><feFuncB type="linear" slope="1.5"/></feComponentTransfer>');
         ensureFilter(floatingDefs, 'floating-img-filter-contrast', '<feComponentTransfer><feFuncR type="linear" slope="2" intercept="-0.5"/><feFuncG type="linear" slope="2" intercept="-0.5"/><feFuncB type="linear" slope="2" intercept="-0.5"/></feComponentTransfer>');
         ensureFilter(floatingDefs, 'floating-img-filter-invert', '<feComponentTransfer><feFuncR type="table" tableValues="1 0"/><feFuncG type="table" tableValues="1 0"/><feFuncB type="table" tableValues="1 0"/></feComponentTransfer>');
+        
+        // Add shadow filter templates (will be dynamically created with color values)
+        // We'll create these dynamically in _updateNetwork based on individual image shadow settings
 
         // Create zoom behavior
         this.zoom = d3.zoom()
@@ -627,10 +712,10 @@ _onFloatingImageContextMenu(event, d) {
         // Arrow marker for directed links
         // (Arrow marker removed by user request)
 
-        // Create groups for links, nodes, and annotations within the zoom container
+        // Create groups for links, nodes, and  within the zoom container
         this.zoomContainer.append("g").attr("class", "links");
         this.zoomContainer.append("g").attr("class", "nodes");
-        this.zoomContainer.append("g").attr("class", "annotations");
+
         this.zoomContainer.append("g").attr("class", "floating-images"); // Group for floating images
 
         // Create force simulation
@@ -686,6 +771,12 @@ _onFloatingImageContextMenu(event, d) {
         
         // Load nodes
         this.nodes = (this.widgetData.nodes || []).map(nodeData => {
+            // Common tooltip style fields
+            const tooltipBg = nodeData.tooltipBg || '#222222';
+            const tooltipColor = nodeData.tooltipColor || '#ffffff';
+            const tooltipBorder = nodeData.tooltipBorder || '1px solid #888';
+            const tooltipRadius = nodeData.tooltipRadius || '6px';
+            const tooltipFontSize = nodeData.tooltipFontSize || '14px';
             if (nodeData.type === 'Empty') {
                 return {
                     id: nodeData.id,
@@ -699,11 +790,16 @@ _onFloatingImageContextMenu(event, d) {
                     nodeColor: nodeData.nodeColor || '#cccccc',
                     nodeShape: nodeData.nodeShape || 'circle',
                     nodeSize: nodeData.nodeSize || 30,
-                    customTooltip: '',
+                    customTooltip: nodeData.customTooltip || '',
                     x: nodeData.x || Math.random() * this.width,
                     y: nodeData.y || Math.random() * this.height,
                     label: nodeData.label || nodeData.name,
-                    textColor: nodeData.textColor || '#444444'
+                    textColor: nodeData.textColor || '#444444',
+                    tooltipBg,
+                    tooltipColor,
+                    tooltipBorder,
+                    tooltipRadius,
+                    tooltipFontSize
                 };
             } else {
                 return {
@@ -718,9 +814,14 @@ _onFloatingImageContextMenu(event, d) {
                     nodeColor: nodeData.nodeColor || '#69b3a2',
                     nodeShape: nodeData.nodeShape || 'circle',
                     nodeSize: nodeData.nodeSize || 30,
-                    customTooltip: nodeData.customTooltip || '',
+                    customTooltip: nodeData.customTooltip || nodeData.customName || nodeData.name || '',
                     x: nodeData.x || Math.random() * this.width,
-                    y: nodeData.y || Math.random() * this.height
+                    y: nodeData.y || Math.random() * this.height,
+                    tooltipBg,
+                    tooltipColor,
+                    tooltipBorder,
+                    tooltipRadius,
+                    tooltipFontSize
                 };
             }
         });
@@ -732,19 +833,8 @@ _onFloatingImageContextMenu(event, d) {
             label: linkData.label || ''
         }));
 
-        // Load annotations
-        this.annotations = (this.widgetData.annotations || []).map(annotationData => ({
-            id: annotationData.id || `annotation-${Date.now()}-${Math.random()}`,
-            x: annotationData.x || 0,
-            y: annotationData.y || 0,
-            dx: annotationData.dx || 0,
-            dy: annotationData.dy || 0,
-            note: {
-                title: annotationData.title || '',
-                label: annotationData.label || ''
-            },
-            type: d3.annotationLabel
-        }));
+
+
 
         // Load floating images
         this.floatingImages = (this.widgetData.floatingImages || []).map(img => ({
@@ -756,13 +846,25 @@ _onFloatingImageContextMenu(event, d) {
             height: img.height,
             filter: img.filter || '',
             animation: img.animation || '',
-            linkedUuid: img.linkedUuid || ''
+            linkedUuid: img.linkedUuid || '',
+            rotation: img.rotation || 0,
+            opacity: img.opacity !== undefined ? img.opacity : 100,
+            zIndex: img.zIndex || 0,
+            locked: img.locked || false,
+            borderColor: img.borderColor || '#000000',
+            borderWidth: img.borderWidth || 0,
+            borderStyle: img.borderStyle || 'solid',
+            shadowEnabled: img.shadowEnabled !== undefined ? img.shadowEnabled : false,
+            shadowColor: img.shadowColor || '#000000',
+            shadowBlur: img.shadowBlur !== undefined ? img.shadowBlur : 5,
+            shadowOffsetX: img.shadowOffsetX !== undefined ? img.shadowOffsetX : 3,
+            shadowOffsetY: img.shadowOffsetY !== undefined ? img.shadowOffsetY : 3
         }));
         console.log('Network Widget | Loaded floatingImages:', this.floatingImages);
 
-        console.log(`Network Widget | Loaded ${this.nodes.length} nodes, ${this.links.length} links, and ${this.annotations.length} annotations for ${this.isGM ? 'GM' : 'Player'}`);
+        console.log(`Network Widget | Loaded ${this.nodes.length} nodes, ${this.links.length} links}`);
         console.log('Network Widget | Links data:', this.links);
-        console.log('Network Widget | Annotations data:', this.annotations);
+
 
         // Update node map
         this.nodeMap.clear();
@@ -784,13 +886,13 @@ _onFloatingImageContextMenu(event, d) {
         
 
         // Get user settings for colors
-        let linkColor = '#666';
-        let nodeLabelColor = '#333';
-        let linkLabelOutlineColor = '#fff';
+        let linkColor = '#ffffffff';
+        let nodeLabelColor = '#efe5e5ff';
+        let linkLabelOutlineColor = '#ad1313ff';
         if (typeof game !== 'undefined' && game.settings) {
-            try { linkColor = game.settings.get('network-widget', 'linkColor') || '#666'; } catch {}
-            try { nodeLabelColor = game.settings.get('network-widget', 'nodeLabelColor') || '#333'; } catch {}
-            try { linkLabelOutlineColor = game.settings.get('network-widget', 'linkLabelOutlineColor') || '#fff'; } catch {}
+            try { linkColor = game.settings.get('network-widget', 'linkColor') || '#ffffffff'; } catch {}
+            try { nodeLabelColor = game.settings.get('network-widget', 'nodeLabelColor') || '#fdfdfdff'; } catch {}
+            try { linkLabelOutlineColor = game.settings.get('network-widget', 'linkLabelOutlineColor') || '#c00606ff'; } catch {}
         }
 
         // Update links
@@ -863,17 +965,106 @@ _onFloatingImageContextMenu(event, d) {
             .append("g")
             .attr("class", "node-group");
 
-        // Only add drag behavior for GMs
-        if (this.isGM) {
+        // Always remove drag behavior first
+        nodeEnter.on('.drag', null);
+        // Only add drag behavior for GMs, unless nodesLocked is true
+        if (this.isGM && !this.nodesLocked) {
             nodeEnter.call(d3.drag()
                 .on("start", this._dragstarted.bind(this))
                 .on("drag", this._dragged.bind(this))
                 .on("end", this._dragended.bind(this)));
         }
+        // Also update drag for all existing nodes
+        this.nodeElements.on('.drag', null);
+        if (this.isGM && !this.nodesLocked) {
+            this.nodeElements.call(d3.drag()
+                .on("start", this._dragstarted.bind(this))
+                .on("drag", this._dragged.bind(this))
+                .on("end", this._dragended.bind(this)));
+        }
 
-        // Add tooltip
-        nodeEnter.append("title")
-            .text(d => this._getNodeTooltip(d));
+        // Remove any previous custom tooltip div
+        d3.select('.network-html-tooltip').remove();
+        // Create a single tooltip div for all nodes
+        const tooltip = d3.select('body')
+            .append('div')
+            .attr('class', 'd3-tip network-html-tooltip')
+            .style('position', 'absolute')
+            .style('visibility', 'hidden');
+
+        let isDraggingNode = false;
+        function showTooltip(event, d) {
+            if (isDraggingNode) return;
+            // For empty nodes, show label or customTooltip if present
+            if (d.type === 'Empty') {
+                let html = (d.customTooltip && d.customTooltip.trim())
+                    ? d.customTooltip
+                    : `<div style='font-weight:bold;'>${d.label || d.name}</div>`;
+                tooltip.html(html)
+                    .style('background', d.tooltipBg || '#222222')
+                    .style('color', d.tooltipColor || '#ffffff')
+                    .style('border', d.tooltipBorder || '1px solid #888')
+                    .style('border-radius', d.tooltipRadius || '6px')
+                    .style('font-size', d.tooltipFontSize || '14px')
+                    .style('padding', '8px 12px')
+                    .style('box-shadow', '0 2px 8px rgba(0,0,0,0.18)')
+                    .style('z-index', 10000)
+                    .style('visibility', 'visible');
+                return;
+            }
+            let html = d.customTooltip && d.customTooltip.trim()
+                ? d.customTooltip
+                : `<div style='font-weight:bold;'>${this._getNodeDisplayName(d)}</div>`;
+            tooltip.html(html)
+                .style('background', d.tooltipBg || '#222222')
+                .style('color', d.tooltipColor || '#ffffff')
+                .style('border', d.tooltipBorder || '1px solid #888')
+                .style('border-radius', d.tooltipRadius || '6px')
+                .style('font-size', d.tooltipFontSize || '14px')
+                .style('padding', '8px 12px')
+                .style('box-shadow', '0 2px 8px rgba(0,0,0,0.18)')
+                .style('z-index', 10000)
+                .style('visibility', 'visible');
+        }
+        function moveTooltip(event) {
+            // Calculate intended position
+            const padding = 8; // space from edge
+            // Temporarily set position to measure size
+            tooltip.style('top', '-9999px').style('left', '-9999px').style('visibility', 'visible');
+            const rect = tooltip.node().getBoundingClientRect();
+            let top = event.clientY + 18;
+            let left = event.clientX - 10;
+            // Check right edge
+            if (left + rect.width + padding > window.innerWidth) {
+                left = event.clientX - rect.width - 10;
+            }
+            // Check left edge
+            if (left < padding) {
+                left = padding;
+            }
+            // Check bottom edge
+            if (top + rect.height + padding > window.innerHeight) {
+                top = event.clientY - rect.height - 10;
+            }
+            // Check top edge
+            if (top < padding) {
+                top = padding;
+            }
+            tooltip.style('top', top + 'px').style('left', left + 'px');
+        }
+        function hideTooltip() {
+            tooltip.style('visibility', 'hidden');
+        }
+        nodeEnter
+            .on('mouseover', function(event, d) { showTooltip.call(this, event, d); })
+            .on('mousemove', moveTooltip)
+            .on('mouseout', hideTooltip)
+            .on('mousedown', hideTooltip)
+            .on('mouseup',  hideTooltip)
+            .on('click', hideTooltip)
+            .on('touchstart', hideTooltip);
+        // Remove any SVG <title> (for update)
+        nodeEnter.select('title').remove();
 
         // Add node shapes with conditional styling
         nodeEnter.each((d, i, nodes) => {
@@ -1057,8 +1248,17 @@ _onFloatingImageContextMenu(event, d) {
             .attr("dy", d => d.type === 'Empty' ? 4 : (d.nodeSize || 30) + 15)
             .attr("fill", nodeLabelColor);
 
-        this.nodeElements.selectAll('title')
-            .text(d => this._getNodeTooltip(d));
+        // Remove any SVG <title> from updated nodes
+        this.nodeElements.selectAll('title').remove();
+        // Attach tooltip events to all nodes
+        this.nodeElements
+            .on('mouseover', function(event, d) { showTooltip.call(this, event, d); })
+            .on('mousemove', moveTooltip)
+            .on('mouseout', hideTooltip)
+            .on('mousedown', hideTooltip)
+            .on('mouseup', hideTooltip)
+            .on('click', hideTooltip)
+            .on('touchstart', hideTooltip);
 
         // Remove old nodes
         this.nodeElements.exit().remove();
@@ -1083,19 +1283,26 @@ _onFloatingImageContextMenu(event, d) {
                 this.zoomContainer.node().insertBefore(node, this.zoomContainer.node().firstChild);
             }
         }
-        let images = floatingImagesGroup.selectAll('.floating-image').data(this.floatingImages, d => d.id);
+        // Sort images by zIndex so they render in correct order (lower zIndex renders first, appears behind)
+        const sortedImages = [...this.floatingImages].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
+        let images = floatingImagesGroup.selectAll('.floating-image').data(sortedImages, d => d.id);
         const imagesEnter = images.enter().append('g')
             .attr('class', 'floating-image')
             .attr('transform', d => `translate(${d.x},${d.y})`);
         if (this.isGM) {
-            imagesEnter
-                .call(d3.drag()
-                    .on('start', (event, d) => this._onFloatingImageDragStart(event, d))
-                    .on('drag', (event, d) => this._onFloatingImageDrag(event, d))
-                    .on('end', (event, d) => this._onFloatingImageDragEnd(event, d))
-                )
-                .on('click', (event, d) => this._onFloatingImageClick(event, d))
-                .on('contextmenu', (event, d) => this._onFloatingImageContextMenu(event, d));
+            imagesEnter.each((d, i, nodes) => {
+                const group = d3.select(nodes[i]);
+                // Only add drag if not locked
+                if (!d.locked) {
+                    group.call(d3.drag()
+                        .on('start', (event, d) => this._onFloatingImageDragStart(event, d))
+                        .on('drag', (event, d) => this._onFloatingImageDrag(event, d))
+                        .on('end', (event, d) => this._onFloatingImageDragEnd(event, d))
+                    );
+                }
+                group.on('click', (event, d) => this._onFloatingImageClick(event, d))
+                    .on('contextmenu', (event, d) => this._onFloatingImageContextMenu(event, d));
+            });
         }
         // Map filter string to SVG filter id
         function getSvgFilterId(filter) {
@@ -1109,6 +1316,24 @@ _onFloatingImageContextMenu(event, d) {
                 default: return null;
             }
         }
+        // Add border rectangle if border is enabled
+        imagesEnter.each((d, i, nodes) => {
+            if (d.borderWidth > 0) {
+                const group = d3.select(nodes[i]);
+                group.insert('rect', ':first-child')
+                    .attr('class', d => d.animation ? `image-border floating-img-anim-${d.animation}` : 'image-border')
+                    .attr('x', -d.borderWidth)
+                    .attr('y', -d.borderWidth)
+                    .attr('width', d.width + d.borderWidth * 2)
+                    .attr('height', d.height + d.borderWidth * 2)
+                    .attr('transform', d => d.rotation ? `rotate(${d.rotation} ${d.width/2} ${d.height/2})` : null)
+                    .attr('fill', 'none')
+                    .attr('stroke', d.borderColor)
+                    .attr('stroke-width', d.borderWidth)
+                    .style('stroke-dasharray', d.borderStyle === 'dashed' ? '10,5' : (d.borderStyle === 'dotted' ? '2,2' : 'none'))
+                    .style('pointer-events', 'none');
+            }
+        });
         imagesEnter.append('image')
             .attr('xlink:href', d => d.href)
             .attr('href', d => d.href)
@@ -1116,13 +1341,47 @@ _onFloatingImageContextMenu(event, d) {
             .attr('y', 0)
             .attr('width', d => d.width)
             .attr('height', d => d.height)
+            .attr('transform', d => d.rotation ? `rotate(${d.rotation} ${d.width/2} ${d.height/2})` : null)
             .attr('class', d => d.animation ? `floating-img-anim-${d.animation}` : null)
             .style('pointer-events', 'all')
-            .style('filter', d => d.filter || null);
-        // Add resize handles if selected
+            .style('opacity', d => (d.opacity !== undefined ? d.opacity : 100) / 100)
+            .style('filter', d => this._getImageFilter(d))
+            .style('cursor', d => d.locked ? 'not-allowed' : 'move');
+        // Add lock indicator if locked
         imagesEnter.each((d, i, nodes) => {
-            if (this.selectedFloatingImageId === d.id) {
-                this._addResizeHandles(d3.select(nodes[i]), d);
+            if (d.locked) {
+                const group = d3.select(nodes[i]);
+                group.append('text')
+                    .attr('class', 'lock-indicator')
+                    .attr('x', 5)
+                    .attr('y', 20)
+                    .attr('font-size', '16px')
+                    .attr('fill', '#ff6b6b')
+                    .attr('stroke', '#fff')
+                    .attr('stroke-width', 2)
+                    .attr('paint-order', 'stroke')
+                    .text('🔒');
+            }
+        });
+        // Add resize handles if selected AND unlocked
+        // Resize handles removed (unused)
+        // Update borders
+        images.selectAll('.image-border').remove();
+        images.each((d, i, nodes) => {
+            if (d.borderWidth > 0) {
+                const group = d3.select(nodes[i]);
+                group.insert('rect', ':first-child')
+                    .attr('class', d => d.animation ? `image-border floating-img-anim-${d.animation}` : 'image-border')
+                    .attr('x', -d.borderWidth)
+                    .attr('y', -d.borderWidth)
+                    .attr('width', d.width + d.borderWidth * 2)
+                    .attr('height', d.height + d.borderWidth * 2)
+                    .attr('transform', d => d.rotation ? `rotate(${d.rotation} ${d.width/2} ${d.height/2})` : null)
+                    .attr('fill', 'none')
+                    .attr('stroke', d.borderColor)
+                    .attr('stroke-width', d.borderWidth)
+                    .style('stroke-dasharray', d.borderStyle === 'dashed' ? '10,5' : (d.borderStyle === 'dotted' ? '2,2' : 'none'))
+                    .style('pointer-events', 'none');
             }
         });
         // Always update filter and animation class on update selection
@@ -1131,15 +1390,49 @@ _onFloatingImageContextMenu(event, d) {
             .attr('y', 0)
             .attr('width', d => d.width)
             .attr('height', d => d.height)
+            .attr('transform', d => d.rotation ? `rotate(${d.rotation} ${d.width/2} ${d.height/2})` : null)
             .attr('class', d => d.animation ? `floating-img-anim-${d.animation}` : null)
             .style('pointer-events', 'all')
-            .style('filter', d => d.filter || null);
+            .style('opacity', d => (d.opacity !== undefined ? d.opacity : 100) / 100)
+            .style('filter', d => this._getImageFilter(d))
+            .style('cursor', d => d.locked ? 'not-allowed' : 'move');
+        // Update lock indicators
+        images.selectAll('.lock-indicator').remove();
+        images.each((d, i, nodes) => {
+            if (d.locked) {
+                const group = d3.select(nodes[i]);
+                group.append('text')
+                    .attr('class', 'lock-indicator')
+                    .attr('x', 5)
+                    .attr('y', 20)
+                    .attr('font-size', '16px')
+                    .attr('fill', '#ff6b6b')
+                    .attr('stroke', '#fff')
+                    .attr('stroke-width', 2)
+                    .attr('paint-order', 'stroke')
+                    .text('🔒');
+            }
+        });
+        // Update drag handlers based on locked state
+        if (this.isGM) {
+            images.each((d, i, nodes) => {
+                const group = d3.select(nodes[i]);
+                // Remove existing drag behavior
+                group.on('.drag', null);
+                // Only re-add if not locked
+                if (!d.locked) {
+                    group.call(d3.drag()
+                        .on('start', (event, d) => this._onFloatingImageDragStart(event, d))
+                        .on('drag', (event, d) => this._onFloatingImageDrag(event, d))
+                        .on('end', (event, d) => this._onFloatingImageDragEnd(event, d))
+                    );
+                }
+            });
+        }
         // Update group position on update
         images.attr('transform', d => `translate(${d.x},${d.y})`);
         images.exit().remove();
 
-        // Update annotations
-        this._updateAnnotations();
 
         // Update simulation
         this.simulation.nodes(this.nodes);
@@ -1155,426 +1448,8 @@ _onFloatingImageContextMenu(event, d) {
         }
     }
 
-    _updateAnnotations() {
-        if (!d3 || !d3.annotation) {
-            console.warn('Campaign Codex | d3-annotation not loaded, skipping annotation update');
-            // Try to reload the library
-            this._loadD3Annotation().then(() => {
-                console.log('Campaign Codex | d3-annotation reloaded, updating annotations');
-                this._updateAnnotations();
-            }).catch(err => {
-                console.error('Campaign Codex | Failed to reload d3-annotation:', err);
-                ui.notifications.error('Failed to load annotation library. Annotations may not display correctly.');
-            });
-            return;
-        }
 
-        console.log(`Network Widget | Updating ${this.annotations.length} annotations`);
 
-        try {
-            // Create annotation generator - disable edit mode to prevent conflicts
-            const makeAnnotations = d3.annotation()
-                .editMode(false) // We'll handle our own dragging
-                .type(d3.annotationLabel) // Use label type instead of callout to remove connector lines
-                .annotations(this.annotations);
-
-            // Remove existing annotations
-            this.zoomContainer.select(".annotations").selectAll("*").remove();
-
-            // Add annotations to the annotations group
-            this.annotationElements = this.zoomContainer.select(".annotations");
-            this.annotationElements.call(makeAnnotations);
-
-            // Add custom interaction handlers for GM
-            if (this.isGM) {
-                this._setupAnnotationInteractions();
-            }
-
-            console.log(`Network Widget | Successfully updated ${this.annotations.length} annotations`);
-        } catch (error) {
-            console.error('Campaign Codex | Error updating annotations:', error);
-            ui.notifications.error('Error displaying annotations. Please try refreshing the page.');
-        }
-    }
-
-    _setupAnnotationInteractions() {
-        // Remove existing event handlers first
-        this.annotationElements.selectAll('.annotation')
-            .on('click', null)
-            .on('contextmenu', null)
-            .call(d3.drag().on('start', null).on('drag', null).on('end', null));
-
-        // Add custom interaction handlers to annotations
-        this.annotationElements.selectAll('.annotation')
-            .each((d, i, nodes) => {
-                const annotationGroup = d3.select(nodes[i]);
-                
-                // Make entire annotation draggable in annotation mode
-                if (this.annotationMode) {
-                    annotationGroup
-                        .classed('draggable', true)
-                        .call(d3.drag()
-                            .on('start', (event) => this._annotationDragStart(event, d))
-                            .on('drag', (event) => this._annotationDrag(event, d))
-                            .on('end', (event) => this._annotationDragEnd(event, d))
-                        );
-                } else {
-                    annotationGroup.classed('draggable', false);
-                }
-
-                // Add click handler for editing (only in annotation mode)
-                if (this.annotationMode) {
-                    annotationGroup.on('click', (event) => {
-                        event.stopPropagation();
-                        this._editAnnotation(d, i);
-                    });
-                }
-
-                // Add right-click handler for deletion (only for GM)
-                if (this.isGM) {
-                    annotationGroup.on('contextmenu', (event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        this._onAnnotationRightClick(d, i);
-                    });
-                }
-            });
-    }
-
-    _onAnnotationRightClick(annotation, index) {
-        if (!this.isGM) return;
-
-        // Show context menu for annotation actions
-        new foundry.applications.api.DialogV2({
-            window: { title: `Annotation Actions` },
-            content: `<p>Choose an action for this annotation:</p>`,
-            buttons: [
-                {
-                    action: "edit",
-                    label: "Edit",
-                    callback: () => {
-                        this._editAnnotation(annotation, index);
-                    }
-                },
-                {
-                    action: "delete", 
-                    label: "Delete",
-                    callback: async () => {
-                        const proceed = await this._confirmDeleteAnnotation(annotation);
-                        if (proceed) {
-                            this._deleteAnnotation(annotation, index);
-                        }
-                    }
-                },
-                {
-                    action: "cancel",
-                    label: "Cancel",
-                    callback: () => {}
-                }
-            ]
-        }).render(true);
-    }
-
-    async _confirmDeleteAnnotation(annotation) {
-        const title = annotation.note.title || 'Untitled';
-        const label = annotation.note.label || '';
-        const preview = title + (label ? ` - ${label.substring(0, 30)}${label.length > 30 ? '...' : ''}` : '');
-        
-        return new Promise((resolve) => {
-            new foundry.applications.api.DialogV2({
-                window: { title: "Delete Annotation" },
-                content: `<p>Are you sure you want to delete this annotation?</p><p><strong>"${preview}"</strong></p>`,
-                buttons: [
-                    {
-                        action: "delete",
-                        label: "Delete",
-                        callback: () => resolve(true)
-                    },
-                    {
-                        action: "cancel",
-                        label: "Cancel",
-                        callback: () => resolve(false)
-                    }
-                ],
-                default: "cancel"
-            }).render(true);
-        });
-    }
-
-    _deleteAnnotation(annotation, index) {
-        // Remove annotation from array
-        this.annotations.splice(index, 1);
-        
-        // Update display
-        this._updateAnnotations();
-        
-        // Save data
-        this._saveNetworkData();
-        
-        ui.notifications.info("Annotation deleted");
-    }
-
-    _annotationDragStart(event, annotation) {
-        // Store initial position
-        annotation._dragStartX = annotation.x;
-        annotation._dragStartY = annotation.y;
-        
-        // Don't try to set cursor style - it causes errors
-        // Visual feedback is handled by CSS hover states
-    }
-
-    _annotationDrag(event, annotation) {
-        // Update annotation position
-        annotation.x = event.x;
-        annotation.y = event.y;
-        
-        // Re-render this specific annotation
-        this._rerenderSingleAnnotation(annotation);
-        
-        // Update the position in the annotations array to keep it in sync
-        const annotationIndex = this.annotations.findIndex(a => a.id === annotation.id);
-        if (annotationIndex !== -1) {
-            this.annotations[annotationIndex].x = event.x;
-            this.annotations[annotationIndex].y = event.y;
-        }
-    }
-
-    _annotationDragEnd(event, annotation) {
-        // Don't try to set cursor style - it causes errors
-        // The cursor will reset automatically when drag ends
-        
-        // Save data immediately
-        this._saveNetworkData();
-    }
-
-    _rerenderSingleAnnotation(annotation) {
-        // Find the annotation element and update its transform
-        this.annotationElements.selectAll('.annotation')
-            .filter(d => d.id === annotation.id)
-            .attr('transform', `translate(${annotation.x}, ${annotation.y})`);
-    }
-
-    _updateAnnotationLinks() {
-        // Links removed per user request - annotations no longer connect to nodes visually
-    }
-
-    _onAnnotationClick(annotation, index) {
-        if (!this.isGM) return;
-
-        console.log('Annotation clicked:', annotation);
-
-        // Edit annotation when clicked
-        this._editAnnotation(annotation, index);
-    }
-
-    async _editAnnotation(annotation, index) {
-        const currentTitle = annotation.note.title || '';
-        const currentLabel = annotation.note.label || '';
-        
-        const result = await new Promise((resolve) => {
-            new foundry.applications.api.DialogV2({
-                window: { title: "Edit Annotation" },
-                content: `
-                    <div style="margin-bottom: 15px;">
-                        <label for="annotation-title" style="display: block; margin-bottom: 5px; font-weight: bold;">Title:</label>
-                        <input type="text" id="annotation-title" value="${currentTitle}" 
-                               placeholder="Annotation title..." 
-                               style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; margin-bottom: 10px;">
-                        <label for="annotation-label" style="display: block; margin-bottom: 5px; font-weight: bold;">Description:</label>
-                        <textarea id="annotation-label" 
-                                  placeholder="Annotation description..." 
-                                  style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; min-height: 60px;">${currentLabel}</textarea>
-                    </div>
-                `,
-                buttons: [
-                    {
-                        action: "save",
-                        label: "Save",
-                        callback: (event, button, dialog) => {
-                            const titleInput = dialog.element.querySelector('#annotation-title');
-                            const labelInput = dialog.element.querySelector('#annotation-label');
-                            resolve({
-                                action: 'save',
-                                title: titleInput ? titleInput.value.trim() : currentTitle,
-                                label: labelInput ? labelInput.value.trim() : currentLabel
-                            });
-                        }
-                    },
-                    {
-                        action: "remove",
-                        label: "Remove",
-                        callback: () => resolve({ action: 'remove' })
-                    },
-                    {
-                        action: "cancel",
-                        label: "Cancel",
-                        callback: () => resolve({ action: 'cancel' })
-                    }
-                ],
-                default: "save"
-            }).render(true);
-        });
-
-        if (result.action === 'save') {
-            annotation.note.title = result.title;
-            annotation.note.label = result.label;
-            this._updateAnnotations();
-            this._saveNetworkData();
-            ui.notifications.info("Annotation updated");
-        } else if (result.action === 'remove') {
-            this.annotations.splice(index, 1);
-            this._updateAnnotations();
-            this._saveNetworkData();
-            ui.notifications.info("Annotation removed");
-        }
-    }
-
-    _toggleAnnotationMode() {
-        // Check if d3-annotation is available
-        if (!d3 || !d3.annotation) {
-            ui.notifications.error('Annotation library not loaded. Please refresh the page and try again.');
-            return;
-        }
-
-        this.annotationMode = !this.annotationMode;
-        
-        // If enabling annotation mode, disable linking mode
-        if (this.annotationMode && this.linkingMode) {
-            this.linkingMode = false;
-            if (this.selectedNode) {
-                this._highlightNode(this.selectedNode, false);
-                this.selectedNode = null;
-            }
-            const linkButton = this.container.parentElement.querySelector('.toggle-linking');
-            if (linkButton) {
-                linkButton.classList.remove('active');
-                linkButton.style.backgroundColor = '';
-                linkButton.style.color = '';
-            }
-        }
-        
-        const button = this.container.parentElement.querySelector('.toggle-annotation');
-        if (button) {
-            button.classList.toggle('active', this.annotationMode);
-            if (this.annotationMode) {
-                button.style.backgroundColor = '#28a745';
-                button.style.color = 'white';
-            } else {
-                button.style.backgroundColor = '';
-                button.style.color = '';
-            }
-        }
-
-        // Clear selections when exiting annotation mode
-        if (!this.annotationMode) {
-            this.selectedAnnotation = null;
-        }
-
-        // Update instructions
-        this._updateInstructions();
-
-        // Save the annotation mode state (but don't trigger re-render)
-        this.widgetData.annotationMode = this.annotationMode;
-        this.widgetData.linkingMode = this.linkingMode;
-        
-        // Save immediately to prevent position loss
-        this._saveNetworkData();
-
-        // Update annotation interactions without full re-render
-        if (this.annotationElements && !this.annotationElements.empty()) {
-            this._setupAnnotationInteractions();
-        }
-
-        // Add or remove SVG click handler for creating annotations
-        if (this.annotationMode) {
-            // In annotation arrange mode, we don't add click handlers for creation
-            // Creation is handled by the dedicated "Create Annotation" button
-            ui.notifications.info("Annotation arrange mode enabled. Click annotations to edit, drag to move, right-click to delete.");
-        } else {
-            this.svg.on('click.annotation', null);
-            ui.notifications.info("Annotation arrange mode disabled.");
-        }
-    }
-
-    async _onCreateAnnotationClick() {
-        if (!d3 || !d3.annotation) {
-            ui.notifications.error('Annotation library not loaded. Please refresh the page and try again.');
-            return;
-        }
-
-        // Create annotation at center of visible area
-        const svgRect = this.svg.node().getBoundingClientRect();
-        const centerX = this.width / 2;
-        const centerY = this.height / 2;
-        
-        await this._createAnnotation(centerX, centerY);
-    }
-
-    async _createAnnotation(x, y) {
-        if (!d3 || !d3.annotation) {
-            ui.notifications.error('Annotation library not loaded. Please refresh the page and try again.');
-            return;
-        }
-
-        const result = await new Promise((resolve) => {
-            new foundry.applications.api.DialogV2({
-                window: { title: "Create Annotation" },
-                content: `
-                    <div style="margin-bottom: 15px;">
-                        <label for="new-annotation-title" style="display: block; margin-bottom: 5px; font-weight: bold;">Title:</label>
-                        <input type="text" id="new-annotation-title" 
-                               placeholder="Annotation title..." 
-                               style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; margin-bottom: 10px;">
-                        <label for="new-annotation-label" style="display: block; margin-bottom: 5px; font-weight: bold;">Description:</label>
-                        <textarea id="new-annotation-label" 
-                                  placeholder="Annotation description..." 
-                                  style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; min-height: 60px;"></textarea>
-                    </div>
-                `,
-                buttons: [
-                    {
-                        action: "create",
-                        label: "Create",
-                        callback: (event, button, dialog) => {
-                            const titleInput = dialog.element.querySelector('#new-annotation-title');
-                            const labelInput = dialog.element.querySelector('#new-annotation-label');
-                            resolve({
-                                action: 'create',
-                                title: titleInput ? titleInput.value.trim() : '',
-                                label: labelInput ? labelInput.value.trim() : ''
-                            });
-                        }
-                    },
-                    {
-                        action: "cancel",
-                        label: "Cancel",
-                        callback: () => resolve({ action: 'cancel' })
-                    }
-                ],
-                default: "create"
-            }).render(true);
-        });
-
-        if (result.action === 'create' && (result.title || result.label)) {
-            const newAnnotation = {
-                id: `annotation-${Date.now()}-${Math.random()}`,
-                x: x,
-                y: y,
-                dx: 0,
-                dy: 0,
-                note: {
-                    title: result.title,
-                    label: result.label
-                },
-                type: d3.annotationLabel
-            };
-
-            this.annotations.push(newAnnotation);
-            this._updateAnnotations();
-            this._saveNetworkData();
-            ui.notifications.info("Annotation created");
-        }
-    }
 
     _tick() {
         // Update link positions
@@ -1671,9 +1546,9 @@ _onFloatingImageContextMenu(event, d) {
         // Prevent default to avoid interfering with zoom
         event.stopPropagation();
         
-        console.log(`Network Widget | Node clicked: ${d.name}, linking mode: ${this.linkingMode}, annotation mode: ${this.annotationMode}, selected node: ${this.selectedNode?.name || 'none'}`);
+        console.log(`Network Widget | Node clicked: ${d.name}, linking mode: ${this.linkingMode}, selected node: ${this.selectedNode?.name || 'none'}`);
         
-        if (this.isGM && (this.linkingMode || this.annotationMode)) {
+        if (this.isGM && (this.linkingMode)) {
             // GM in linking mode - handle node linking
             if (!this.selectedNode) {
                 // First node selection
@@ -1743,7 +1618,7 @@ _onFloatingImageContextMenu(event, d) {
                         <input type="checkbox" id="hidden-checkbox" ${isHidden ? 'checked' : ''} style="margin-right: 8px;">
                         <span>Hidden from Players</span>
                     </label>
-                    <p style="margin: 5px 0 0 24px; font-size: 11px; color: #666;">
+                    <p style="margin: 5px 0 0 0; font-size: 11px; color: #666;">
                         Players see black circle with "?????"
                     </p>
                 </div>
@@ -1751,7 +1626,7 @@ _onFloatingImageContextMenu(event, d) {
                 <!-- Custom Name Section -->
                 <div style="margin: 5px 0; padding: 12px;">
                     <h4 style="margin: 0 0 8px 0; font-size: 14px;">Display Name</h4>
-                    <input type="text" id="custom-name" value="${d.customName || ''}" placeholder="Leave empty to use original name" 
+                    <input type="text" id="custom-name" value="${d.label || d.name || ''}" placeholder="Leave empty to use original name" 
                            style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 3px;">
                     <p style="margin: 5px 0 0 0; font-size: 11px; color: #666;">
                         Custom label for this node (visible to everyone)
@@ -1802,11 +1677,42 @@ _onFloatingImageContextMenu(event, d) {
                     <h4 style="margin: 0 0 8px 0; font-size: 14px;">Custom Tooltip</h4>
                     <textarea id="custom-tooltip" placeholder="Leave empty to use display name" 
                               style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 3px; height: 60px; resize: vertical;">${d.customTooltip || ''}</textarea>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
+                        <div>
+                            <label style="display: block; font-size: 12px; margin-bottom: 3px;">Tooltip Background:</label>
+                            <input type="color" id="tooltip-bg" value="${d.tooltipBg || '#222222'}" style="width: 100%; height: 30px; border: 1px solid #ccc; border-radius: 3px;">
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 12px; margin-bottom: 3px;">Tooltip Text Color:</label>
+                            <input type="color" id="tooltip-color" value="${d.tooltipColor || '#ffffff'}" style="width: 100%; height: 30px; border: 1px solid #ccc; border-radius: 3px;">
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
+                        <div>
+                            <label style="display: block; font-size: 12px; margin-bottom: 3px;">Tooltip Border:</label>
+                            <div style="display: flex; gap: 4px; align-items: center;">
+                                <input type="text" id="tooltip-border-width" value="${(d.tooltipBorder||'1px solid #888').split(' ')[0]}" style="width: 50px; padding: 4px; border: 1px solid #ccc; border-radius: 3px;" placeholder="e.g. 1px">
+                                <select id="tooltip-border-style" style="width: 70px;">
+                                    ${['solid','dashed','dotted','double','groove','ridge','inset','outset','none'].map(style => `<option value='${style}'${(d.tooltipBorder||'1px solid #888').split(' ')[1]===style?' selected':''}>${style}</option>`).join('')}
+                                </select>
+                                <input type="color" id="tooltip-border-color" value="${(() => {let c=(d.tooltipBorder||'1px solid #888').split(' ')[2];if(!c||!c.startsWith('#'))return'#888888';return c;})()}" style="width: 36px; height: 28px; border: 1px solid #ccc; border-radius: 3px;">
+                            </div>
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 12px; margin-bottom: 3px;">Tooltip Border Radius:</label>
+                            <input type="text" id="tooltip-radius" value="${d.tooltipRadius || '6px'}" style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 3px;" placeholder="e.g. 6px">
+                        </div>
+                    </div>
+                    <div style="margin-top: 10px;">
+                        <label style="display: block; font-size: 12px; margin-bottom: 3px;">Tooltip Font Size:</label>
+                        <input type="text" id="tooltip-fontsize" value="${d.tooltipFontSize || '14px'}" style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 3px;" placeholder="e.g. 14px">
+                    </div>
                     <p style="margin: 5px 0 0 0; font-size: 11px; color: #666;">
-                        Custom hover text for this node
+                        Custom hover text and style for this node
                     </p>
                 </div>
             `,
+        // ...existing code...
             buttons: [
                 {
                     action: "update",
@@ -1818,10 +1724,17 @@ _onFloatingImageContextMenu(event, d) {
                         const nodeShape = dialog.element.querySelector('#node-shape')?.value || 'circle';
                         const nodeSize = parseInt(dialog.element.querySelector('#node-size')?.value) || 30;
                         const customTooltip = dialog.element.querySelector('#custom-tooltip')?.value.trim() || '';
-                        
+                        const tooltipBg = dialog.element.querySelector('#tooltip-bg')?.value || '#222222';
+                        const tooltipColor = dialog.element.querySelector('#tooltip-color')?.value || '#ffffff';
+                        // Compose tooltip border from dropdowns
+                        const borderWidth = dialog.element.querySelector('#tooltip-border-width')?.value || '1px';
+                        const borderStyle = dialog.element.querySelector('#tooltip-border-style')?.value || 'solid';
+                        const borderColor = dialog.element.querySelector('#tooltip-border-color')?.value || '#888888';
+                        const tooltipBorder = `${borderWidth} ${borderStyle} ${borderColor}`;
+                        const tooltipRadius = dialog.element.querySelector('#tooltip-radius')?.value || '6px';
+                        const tooltipFontSize = dialog.element.querySelector('#tooltip-fontsize')?.value || '14px';
                         // Apply changes
                         let hasChanges = false;
-                        
                         if (d.hiddenFromPlayers !== hidden) {
                             d.hiddenFromPlayers = hidden;
                             hasChanges = true;
@@ -1841,6 +1754,10 @@ _onFloatingImageContextMenu(event, d) {
                                 d.textColor = textColor;
                                 hasChanges = true;
                             }
+                            if (d.customTooltip !== customTooltip) {
+                                d.customTooltip = customTooltip;
+                                hasChanges = true;
+                            }
                         }
                         if (d.nodeColor !== nodeColor) {
                             d.nodeColor = nodeColor;
@@ -1858,85 +1775,35 @@ _onFloatingImageContextMenu(event, d) {
                             d.customTooltip = customTooltip;
                             hasChanges = true;
                         }
-                        
+                        if (d.tooltipBg !== tooltipBg) {
+                            d.tooltipBg = tooltipBg;
+                            hasChanges = true;
+                        }
+                        if (d.tooltipColor !== tooltipColor) {
+                            d.tooltipColor = tooltipColor;
+                            hasChanges = true;
+                        }
+                        if (d.tooltipBorder !== tooltipBorder) {
+                            d.tooltipBorder = tooltipBorder;
+                            hasChanges = true;
+                        }
+                        if (d.tooltipRadius !== tooltipRadius) {
+                            d.tooltipRadius = tooltipRadius;
+                            hasChanges = true;
+                        }
+                        if (d.tooltipFontSize !== tooltipFontSize) {
+                            d.tooltipFontSize = tooltipFontSize;
+                            hasChanges = true;
+                        }
                         if (hasChanges) {
                             this._updateNetwork(); // Preserve zoom when updating node properties
                             this._saveNetworkData();
                             ui.notifications.info(`${d.name} appearance updated`);
                         }
                     }
-                },
-                {
-                    action: "reset",
-                    label: "Reset to Default",
-                    callback: async () => {
-                        const proceed = await this.confirmationDialog(`Reset ${d.name} to default appearance?`);
-                        if (proceed) {
-                            d.hiddenFromPlayers = false;
-                            d.customName = '';
-                            d.nodeColor = '#69b3a2';
-                            d.nodeShape = 'circle';
-                            d.nodeSize = 30;
-                            d.customTooltip = '';
-                            this._updateNetwork();
-                            this._saveNetworkData();
-                            ui.notifications.info(`${d.name} reset to default appearance`);
-                        }
-                    }
-                },
-                {
-                    action: "open",
-                    label: `Open ${d.type || 'Document'}`,
-                    callback: () => {
-                        if (d.canObserve) {
-                            this._onOpenDocument(d.uuid, d.type || "Actor");
-                        } else {
-                            ui.notifications.warn("You don't have permission to view this document.");
-                        }
-                    }
-                },
-                {
-                    action: "remove", 
-                    label: "Remove from Network",
-                    callback: async () => {
-                        const proceed = await this.confirmationDialog(`Remove ${d.name} from the network?`);
-                        if (proceed) {
-                            this._removeNode(d);
-                        }
-                    }
-                },
-                {
-                    action: "cancel",
-                    label: "Cancel",
-                    callback: () => {}
                 }
             ]
         }).render(true);
-    }
-
-    _highlightNode(node, highlight) {
-        // Highlight the node's shape (circle, rect, polygon)
-        const nodeSel = this.nodeElements.filter(d => d === node);
-        // For empty nodes, fill red and dark border
-        if (highlight && node.type === 'Empty') {
-            nodeSel.select('.node')
-                .attr('fill', '#ff6b6b')
-                .attr('stroke', '#a10000')
-                .attr('stroke-width', 5);
-        } else {
-            nodeSel.select('.node')
-                .attr('fill', node.nodeColor || (node.type === 'Empty' ? '#cccccc' : '#fff'))
-                .attr('stroke', highlight ? '#ff6b6b' : '#333')
-                .attr('stroke-width', highlight ? 4 : 2);
-        }
-
-        // For nodes with images, apply a red filter when highlighted
-        const img = nodeSel.select('.node-image');
-        if (highlight && node.type !== 'Empty') {
-            img.style('filter', 'brightness(0.7) sepia(1) hue-rotate(-30deg) saturate(6)');
-        } else {
-            img.style('filter', null);
-        }
     }
 
     async _toggleLink(nodeA, nodeB) {
@@ -1989,7 +1856,7 @@ _onFloatingImageContextMenu(event, d) {
                     <div style="margin-bottom: 15px;">
                         <p>${message}</p>
                         <input type="text" id="link-label-input" placeholder="e.g., friend, family, ally, enemy..." 
-                               style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                               style="width: 100%; padding: 8px, 8px, 8px, 0;">
                     </div>
                 `,
                 buttons: [
@@ -2025,7 +1892,7 @@ _onFloatingImageContextMenu(event, d) {
                         <p>Edit relationship between <strong>${sourceName}</strong> and <strong>${targetName}</strong>:</p>
                         <input type="text" id="edit-link-label-input" value="${currentLabel}" 
                                placeholder="e.g., friend, family, ally, enemy..." 
-                               style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                               style="width: 100%; padding: 8px, 8px, 8px, 0;">
                     </div>
                 `,
                 buttons: [
@@ -2100,19 +1967,6 @@ _onFloatingImageContextMenu(event, d) {
     _toggleLinkingMode() {
         this.linkingMode = !this.linkingMode;
         
-        // If enabling linking mode, disable annotation mode
-        if (this.linkingMode && this.annotationMode) {
-            this.annotationMode = false;
-            const annotationButton = this.container.parentElement.querySelector('.toggle-annotation');
-            if (annotationButton) {
-                annotationButton.classList.remove('active');
-                annotationButton.style.backgroundColor = '';
-                annotationButton.style.color = '';
-            }
-            // Remove SVG click handler for annotations
-            this.svg.on('click.annotation', null);
-        }
-        
         const button = this.container.parentElement.querySelector('.toggle-linking');
         if (button) {
             button.classList.toggle('active', this.linkingMode);
@@ -2136,7 +1990,7 @@ _onFloatingImageContextMenu(event, d) {
 
         // Save the linking mode state and clear selected node if needed
         this.widgetData.linkingMode = this.linkingMode;
-        this.widgetData.annotationMode = this.annotationMode;
+
         this.widgetData.selectedNodeId = this.linkingMode && this.selectedNode ? this.selectedNode.id : null;
         
         // Save data to persist state
@@ -2146,17 +2000,17 @@ _onFloatingImageContextMenu(event, d) {
     }
 
     async _clearNetwork() {
-        const proceed = await this.confirmationDialog("Are you sure you want to clear all nodes, links, and annotations from the network?");
+        const proceed = await this.confirmationDialog("Are you sure you want to clear all nodes, links from the network?");
         if (!proceed) return;
 
         this.nodes = [];
         this.links = [];
-        this.annotations = [];
+
         this.nodeMap.clear();
         this.selectedNode = null;
-        this.selectedAnnotation = null;
+
         this.linkingMode = false;
-        this.annotationMode = false;
+
         
         const linkButton = this.container?.parentElement?.querySelector('.toggle-linking');
         if (linkButton) {
@@ -2165,12 +2019,7 @@ _onFloatingImageContextMenu(event, d) {
             linkButton.style.color = '';
         }
         
-        const annotationButton = this.container?.parentElement?.querySelector('.toggle-annotation');
-        if (annotationButton) {
-            annotationButton.classList.remove('active');
-            annotationButton.style.backgroundColor = '';
-            annotationButton.style.color = '';
-        }
+
 
         this._updateNetwork(false); // Reset zoom when clearing network
         this._updateInstructions();
@@ -2178,7 +2027,7 @@ _onFloatingImageContextMenu(event, d) {
         // Clear all state
         this.widgetData.selectedNodeId = null;
         this.widgetData.linkingMode = false;
-        this.widgetData.annotationMode = false;
+
         
         await this._saveNetworkData();
         ui.notifications.info("Network cleared.");
@@ -2320,8 +2169,15 @@ _onFloatingImageContextMenu(event, d) {
             NetworkWidget.storeZoomState(this.widgetId, currentTransform);
         }
         
+
         const dataToSave = {
             nodes: this.nodes.map(node => {
+                // Persist tooltip style fields for all nodes
+                const tooltipBg = node.tooltipBg || '#222222';
+                const tooltipColor = node.tooltipColor || '#ffffff';
+                const tooltipBorder = node.tooltipBorder || '1px solid #888';
+                const tooltipRadius = node.tooltipRadius || '6px';
+                const tooltipFontSize = node.tooltipFontSize || '14px';
                 if (node.type === 'Empty') {
                     return {
                         id: node.id,
@@ -2335,7 +2191,13 @@ _onFloatingImageContextMenu(event, d) {
                         x: node.x,
                         y: node.y,
                         label: node.label || node.name,
-                        textColor: node.textColor || '#444444'
+                        textColor: node.textColor || '#444444',
+                        customTooltip: node.customTooltip || '',
+                        tooltipBg,
+                        tooltipColor,
+                        tooltipBorder,
+                        tooltipRadius,
+                        tooltipFontSize
                     };
                 } else {
                     return {
@@ -2352,7 +2214,12 @@ _onFloatingImageContextMenu(event, d) {
                         nodeSize: node.nodeSize || 30,
                         customTooltip: node.customTooltip || '',
                         x: node.x,
-                        y: node.y
+                        y: node.y,
+                        tooltipBg,
+                        tooltipColor,
+                        tooltipBorder,
+                        tooltipRadius,
+                        tooltipFontSize
                     };
                 }
             }),
@@ -2361,24 +2228,15 @@ _onFloatingImageContextMenu(event, d) {
                 target: typeof link.target === 'object' ? link.target.id : link.target,
                 label: link.label || ''
             })),
-            annotations: this.annotations.map(annotation => ({
-                id: annotation.id,
-                x: annotation.x,
-                y: annotation.y,
-                dx: annotation.dx,
-                dy: annotation.dy,
-                title: annotation.note.title || '',
-                label: annotation.note.label || ''
-            })),
             floatingImages: this.floatingImages.map(img => ({ ...img })),
             linkingMode: this.linkingMode || false,
-            annotationMode: this.annotationMode || false,
-            selectedNodeId: this.selectedNode ? this.selectedNode.id : null
+            selectedNodeId: this.selectedNode ? this.selectedNode.id : null,
+            nodesLocked: this.nodesLocked || false
         };
 
         console.log('Network Widget | Saving data:', JSON.stringify(dataToSave, null, 2));
         console.log('Network Widget | Links array being saved:', this.links);
-        console.log('Network Widget | Annotations array being saved:', this.annotations);
+
         
         this.widgetData = dataToSave;
         await this.saveData(this.widgetData);
@@ -2467,7 +2325,326 @@ _onFloatingImageContextMenu(event, d) {
         }
     }
 
+    _toggleFullscreen() {
+        if (this.isFullscreen) {
+            this._exitFullscreen();
+        } else {
+            this._enterFullscreen();
+        }
+    }
+
+    _enterFullscreen() {
+        this.isFullscreen = true;
+        
+        // Store current transform before going fullscreen
+        if (this.zoomContainer) {
+            const currentTransform = d3.zoomTransform(this.zoomContainer.node());
+            NetworkWidget.storeZoomState(this.widgetId, currentTransform);
+        }
+        
+        // Create fullscreen overlay
+        this.fullscreenOverlay = document.createElement('div');
+        this.fullscreenOverlay.className = 'network-widget-fullscreen-overlay';
+        this.fullscreenOverlay.innerHTML = `
+            <div class="fullscreen-header">
+                <h2>Network Map - Fullscreen Mode</h2>
+                <div class="fullscreen-controls">
+                    <button type="button" class="fullscreen-reset-zoom" title="Reset zoom to fit all nodes">
+                        <i class="fas fa-search"></i> Reset Zoom
+                    </button>
+                    <button type="button" class="fullscreen-exit" title="Exit fullscreen (ESC)">
+                        <i class="fas fa-compress"></i> Exit Fullscreen
+                    </button>
+                </div>
+            </div>
+            <div class="fullscreen-network-container"></div>
+        `;
+        
+        document.body.appendChild(this.fullscreenOverlay);
+        
+        // Move the SVG to the fullscreen container
+        const fullscreenContainer = this.fullscreenOverlay.querySelector('.fullscreen-network-container');
+        const svg = this.svg.node();
+        fullscreenContainer.appendChild(svg);
+        
+        // Update dimensions to fullscreen
+        const newWidth = window.innerWidth - 40; // 20px padding each side
+        const newHeight = window.innerHeight - 100; // Leave space for header
+        this.width = newWidth;
+        this.height = newHeight;
+        
+        this.svg
+            .attr('width', this.width)
+            .attr('height', this.height);
+        
+        // Update force simulation center
+        if (this.simulation) {
+            this.simulation.force('center', d3.forceCenter(this.width / 2, this.height / 2));
+            this.simulation.alpha(0.1).restart();
+        }
+        
+        // Restore zoom transform
+        const savedZoomState = NetworkWidget.getZoomState(this.widgetId);
+        if (savedZoomState && this.svg) {
+            this.svg.call(this.zoom.transform, savedZoomState);
+        }
+        
+        // Add event listeners
+        this.fullscreenOverlay.querySelector('.fullscreen-exit').addEventListener('click', () => this._exitFullscreen());
+        this.fullscreenOverlay.querySelector('.fullscreen-reset-zoom').addEventListener('click', () => this._resetZoom());
+        
+        // ESC key handler
+        this._fullscreenEscHandler = (e) => {
+            if (e.key === 'Escape') {
+                this._exitFullscreen();
+            }
+        };
+        document.addEventListener('keydown', this._fullscreenEscHandler);
+        
+        // Update button icon in original controls
+        const toggleBtn = this.container?.parentElement?.querySelector('.toggle-fullscreen');
+        if (toggleBtn) {
+            toggleBtn.innerHTML = '<i class="fas fa-compress"></i> Exit Fullscreen';
+        }
+    }
+
+    _exitFullscreen() {
+        if (!this.isFullscreen || !this.fullscreenOverlay) return;
+        
+        this.isFullscreen = false;
+        
+        // Store current transform before exiting
+        if (this.zoomContainer) {
+            const currentTransform = d3.zoomTransform(this.zoomContainer.node());
+            NetworkWidget.storeZoomState(this.widgetId, currentTransform);
+        }
+        
+        // Move SVG back to original container
+        const svg = this.svg.node();
+        this.container.appendChild(svg);
+        
+        // Restore original dimensions
+        const containerRect = this.container.getBoundingClientRect();
+        this.width = containerRect.width || 800;
+        this.height = 600;
+        
+        this.svg
+            .attr('width', this.width)
+            .attr('height', this.height);
+        
+        // Update force simulation center
+        if (this.simulation) {
+            this.simulation.force('center', d3.forceCenter(this.width / 2, this.height / 2));
+            this.simulation.alpha(0.1).restart();
+        }
+        
+        // Restore zoom transform
+        const savedZoomState = NetworkWidget.getZoomState(this.widgetId);
+        if (savedZoomState && this.svg) {
+            this.svg.call(this.zoom.transform, savedZoomState);
+        }
+        
+        // Remove fullscreen overlay
+        if (this.fullscreenOverlay.parentNode) {
+            this.fullscreenOverlay.parentNode.removeChild(this.fullscreenOverlay);
+        }
+        this.fullscreenOverlay = null;
+        
+        // Remove ESC key handler
+        if (this._fullscreenEscHandler) {
+            document.removeEventListener('keydown', this._fullscreenEscHandler);
+            this._fullscreenEscHandler = null;
+        }
+        
+        // Update button icon in original controls
+        const toggleBtn = this.container?.parentElement?.querySelector('.toggle-fullscreen');
+        if (toggleBtn) {
+            toggleBtn.innerHTML = '<i class="fas fa-expand"></i> Fullscreen';
+        }
+    }
+
+    _exportNetwork() {
+        // Collect all network data
+        const exportData = {
+            version: '1.0',
+            timestamp: new Date().toISOString(),
+            nodes: this.nodes,
+            links: this.links,
+            floatingImages: this.floatingImages
+        };
+        
+        // Convert to JSON string
+        const jsonString = JSON.stringify(exportData, null, 2);
+        
+        // Copy to clipboard
+        navigator.clipboard.writeText(jsonString).then(() => {
+            ui.notifications.info('Network map copied to clipboard!');
+        }).catch(err => {
+            console.error('Network Widget | Clipboard error:', err);
+            ui.notifications.error('Failed to copy to clipboard');
+        });
+    }
+
+    _importNetwork() {
+        // Try to read from clipboard
+        navigator.clipboard.readText().then(clipboardText => {
+            try {
+                const importedData = JSON.parse(clipboardText);
+                
+                // Validate imported data
+                if (!importedData.nodes || !Array.isArray(importedData.nodes)) {
+                    throw new Error('Invalid network map format: missing nodes array');
+                }
+                
+                // Show confirmation dialog
+                new Dialog({
+                    title: 'Import Network Map',
+                    content: `
+                        <p>This will <strong>replace</strong> your current network map with the imported data.</p>
+                        <p style="margin-top: 10px; color: #666;">Imported data:</p>
+                        <ul style="margin: 8px 0; padding-left: 20px; font-size: 12px;">
+                            <li>${importedData.nodes?.length || 0} nodes</li>
+                            <li>${importedData.links?.length || 0} links</li>
+                            <li>${importedData.floatingImages?.length || 0} floating images</li>
+                        </ul>
+                        <p style="margin-top: 10px; color: #c00; font-weight: bold;">This action cannot be undone!</p>
+                    `,
+                    buttons: {
+                        import: {
+                            label: 'Import',
+                            callback: () => this._performImport(importedData)
+                        },
+                        cancel: {
+                            label: 'Cancel'
+                        }
+                    },
+                    default: 'cancel'
+                }).render(true);
+            } catch (error) {
+                console.error('Network Widget | Import error:', error);
+                ui.notifications.error(`Failed to import network map: ${error.message}`);
+            }
+        }).catch(err => {
+            console.error('Network Widget | Clipboard error:', err);
+            ui.notifications.error('Failed to read from clipboard. Make sure you have copied a network map first!');
+        });
+    }
+
+    _performImport(importedData) {
+        try {
+            // Restore nodes
+            this.nodes = (importedData.nodes || []).map(nodeData => ({
+                ...nodeData,
+                x: nodeData.x || Math.random() * this.width,
+                y: nodeData.y || Math.random() * this.height
+            }));
+            
+            // Restore links
+            this.links = importedData.links || [];
+            
+
+            
+            // Restore floating images
+            this.floatingImages = (importedData.floatingImages || []).map(img => ({
+                id: img.id,
+                href: img.href,
+                x: img.x,
+                y: img.y,
+                width: img.width,
+                height: img.height,
+                filter: img.filter || '',
+                animation: img.animation || '',
+                linkedUuid: img.linkedUuid || '',
+                rotation: img.rotation || 0,
+                opacity: img.opacity !== undefined ? img.opacity : 100,
+                zIndex: img.zIndex || 0,
+                locked: img.locked || false,
+                borderColor: img.borderColor || '#000000',
+                borderWidth: img.borderWidth || 0,
+                borderStyle: img.borderStyle || 'solid',
+                shadowEnabled: img.shadowEnabled !== undefined ? img.shadowEnabled : false,
+                shadowColor: img.shadowColor || '#000000',
+                shadowBlur: img.shadowBlur !== undefined ? img.shadowBlur : 5,
+                shadowOffsetX: img.shadowOffsetX !== undefined ? img.shadowOffsetX : 3,
+                shadowOffsetY: img.shadowOffsetY !== undefined ? img.shadowOffsetY : 3
+            }));
+            
+            // Update node map
+            this.nodeMap.clear();
+            this.nodes.forEach(node => {
+                this.nodeMap.set(node.uuid, node);
+            });
+            
+            // Update widget data
+            this.widgetData = {
+                nodes: this.nodes,
+                links: this.links,
+
+                floatingImages: this.floatingImages,
+                linkingMode: this.linkingMode,
+
+                selectedNodeId: this.selectedNode?.id || null
+            };
+            
+            // Refresh display
+            this._updateNetwork();
+            this._saveNetworkData();
+            
+            ui.notifications.info('Network map imported successfully');
+        } catch (error) {
+            console.error('Network Widget | Import error:', error);
+            ui.notifications.error(`Failed to import network map: ${error.message}`);
+        }
+    }
+_updateLockNodesButton(lockBtn) {
+    if (!lockBtn) return;
+    const label = lockBtn.querySelector('.lock-nodes-label');
+    const icon = lockBtn.querySelector('i');
+    if (this.nodesLocked) {
+        lockBtn.classList.add('active');
+        lockBtn.style.backgroundColor = '#ff6b6b';
+        lockBtn.style.color = 'white';
+        if (label) label.textContent = 'Locked';
+        if (icon) icon.className = 'fas fa-lock';
+    } else {
+        lockBtn.classList.remove('active');
+        lockBtn.style.backgroundColor = '';
+        lockBtn.style.color = '';
+        if (label) label.textContent = 'Lock';
+        if (icon) icon.className = 'fas fa-lock-open';
+    }
+}
+    _getImageFilter(d) {
+        // Build a combined filter string with shadow and regular filters
+        let filters = [];
+        
+        // Add shadow filter if enabled
+        if (d.shadowEnabled) {
+            // Create a drop shadow effect: blur + offset + color
+            const blur = Math.max(0, d.shadowBlur || 5);
+            const offsetX = d.shadowOffsetX || 3;
+            const offsetY = d.shadowOffsetY || 3;
+            const color = d.shadowColor || '#000000';
+            
+            // Convert hex to rgba for the shadow with default 40% opacity
+            const shadowFilter = `drop-shadow(${offsetX}px ${offsetY}px ${blur}px ${color})`;
+            filters.push(shadowFilter);
+        }
+        
+        // Add regular filter if set
+        if (d.filter) {
+            filters.push(d.filter);
+        }
+        
+        return filters.length > 0 ? filters.join(' ') : null;
+    }
+
     async close() {
+        // Exit fullscreen if active
+        if (this.isFullscreen) {
+            this._exitFullscreen();
+        }
+        
         // Clean up zoom state
         if (NetworkWidget._zoomStates) {
             NetworkWidget._zoomStates.delete(this.widgetId);
