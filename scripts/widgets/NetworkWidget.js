@@ -1056,12 +1056,15 @@ _onFloatingImageContextMenu(event, d) {
             tooltip.style('visibility', 'hidden');
         }
         nodeEnter
-            .on('mouseover', function(event, d) { showTooltip.call(this, event, d); })
-            .on('mousemove', moveTooltip)
+            .on('mouseover', function(event, d) {
+                if (!this.linkingMode) showTooltip.call(this, event, d);
+            }.bind(this))
+            .on('mousemove', function(event) {
+                if (!this.linkingMode) moveTooltip(event);
+            }.bind(this))
             .on('mouseout', hideTooltip)
             .on('mousedown', hideTooltip)
             .on('mouseup',  hideTooltip)
-            .on('click', hideTooltip)
             .on('touchstart', hideTooltip);
         // Remove any SVG <title> (for update)
         nodeEnter.select('title').remove();
@@ -1251,14 +1254,22 @@ _onFloatingImageContextMenu(event, d) {
         // Remove any SVG <title> from updated nodes
         this.nodeElements.selectAll('title').remove();
         // Attach tooltip events to all nodes
+
         this.nodeElements
-            .on('mouseover', function(event, d) { showTooltip.call(this, event, d); })
-            .on('mousemove', moveTooltip)
+            .on('mouseover', function(event, d) {
+                if (!this.linkingMode) showTooltip.call(this, event, d);
+            }.bind(this))
+            .on('mousemove', function(event) {
+                if (!this.linkingMode) moveTooltip(event);
+            }.bind(this))
             .on('mouseout', hideTooltip)
             .on('mousedown', hideTooltip)
             .on('mouseup', hideTooltip)
-            .on('click', hideTooltip)
-            .on('touchstart', hideTooltip);
+            .on('touchstart', hideTooltip)
+            .on('click', (event, d) => {
+                hideTooltip();
+                this._onNodeClick(event, d);
+            });
 
         // Remove old nodes
         this.nodeElements.exit().remove();
@@ -1801,10 +1812,79 @@ _onFloatingImageContextMenu(event, d) {
                             ui.notifications.info(`${d.name} appearance updated`);
                         }
                     }
+                },
+                {
+                    action: "reset",
+                    label: "Reset to Default",
+                    callback: async () => {
+                        const proceed = await this.confirmationDialog(`Reset ${d.name} to default appearance?`);
+                        if (proceed) {
+                            d.hiddenFromPlayers = false;
+                            d.customName = '';
+                            d.nodeColor = '#69b3a2';
+                            d.nodeShape = 'circle';
+                            d.nodeSize = 30;
+                            d.customTooltip = '';
+                            this._updateNetwork();
+                            this._saveNetworkData();
+                            ui.notifications.info(`${d.name} reset to default appearance`);
+                        }
+                    }
+                },
+                {
+                    action: "open",
+                    label: `Open ${d.type || 'Document'}`,
+                    callback: () => {
+                        if (d.canObserve) {
+                            this._onOpenDocument(d.uuid, d.type || "Actor");
+                        } else {
+                            ui.notifications.warn("You don't have permission to view this document.");
+                        }
+                    }
+                },
+                {
+                    action: "remove", 
+                    label: "Remove from Network",
+                    callback: async () => {
+                        const proceed = await this.confirmationDialog(`Remove ${d.name} from the network?`);
+                        if (proceed) {
+                            this._removeNode(d);
+                        }
+                    }
+                },
+                {
+                    action: "cancel",
+                    label: "Cancel",
+                    callback: () => {}
                 }
             ]
         }).render(true);
     }
+    _highlightNode(node, highlight) {
+        // Highlight the node's shape (circle, rect, polygon)
+        const nodeSel = this.nodeElements.filter(d => d === node);
+        // For empty nodes, fill red and dark border
+        if (highlight && node.type === 'Empty') {
+            nodeSel.select('.node')
+                .attr('fill', '#ff6b6b')
+                .attr('stroke', '#a10000')
+                .attr('stroke-width', 5);
+        } else {
+            nodeSel.select('.node')
+                .attr('fill', node.nodeColor || (node.type === 'Empty' ? '#cccccc' : '#fff'))
+                .attr('stroke', highlight ? '#ff6b6b' : '#333')
+                .attr('stroke-width', highlight ? 4 : 2);
+        }
+
+        // For nodes with images, apply a red filter when highlighted
+        const img = nodeSel.select('.node-image');
+        if (highlight && node.type !== 'Empty') {
+            img.style('filter', 'brightness(0.7) sepia(1) hue-rotate(-30deg) saturate(6)');
+        } else {
+            img.style('filter', null);
+        }
+    }
+
 
     async _toggleLink(nodeA, nodeB) {
         console.log(`Network Widget | Attempting to toggle link between ${nodeA.name} and ${nodeB.name}`);
