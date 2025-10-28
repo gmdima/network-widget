@@ -1,3 +1,83 @@
+/* DialogV1 Floating Image Edit Buttons */
+.dialog-buttons {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 18px;
+    padding: 8px 0 0 0;
+}
+.dialog-button {
+    background: linear-gradient(90deg, #23272b 0%, #343a40 100%);
+    color: #fff;
+    border: 1.5px solid #444;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-size: 15px;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+    transition: background 0.18s, border 0.18s, color 0.18s, transform 0.12s;
+}
+.dialog-button:hover {
+    background: linear-gradient(90deg, #2d3238 0%, #495057 100%);
+    border-color: #888;
+    color: #ffd700;
+    transform: translateY(-1px) scale(1.03);
+}
+.dialog-button:active {
+    background: #1a1d20;
+    color: #fff;
+    border-color: #222;
+    transform: scale(0.98);
+}
+.dialog-button.delete {
+    background: linear-gradient(90deg, #7b2323 0%, #b92d2d 100%);
+    border-color: #b92d2d;
+    color: #fff;
+}
+.dialog-button.delete:hover {
+    background: linear-gradient(90deg, #a83232 0%, #e74c3c 100%);
+    color: #fff;
+    border-color: #e74c3c;
+}
+.dialog-button.ok, .dialog-button.default, .dialog-button.bright {
+    background: linear-gradient(90deg, #1e5631 0%, #4caf50 100%);
+    border-color: #4caf50;
+    color: #fff;
+}
+.dialog-button.ok:hover, .dialog-button.default:hover, .dialog-button.bright:hover {
+    background: linear-gradient(90deg, #388e3c 0%, #81c784 100%);
+    color: #fff;
+    border-color: #81c784;
+}
+.dialog-button.toggleLock {
+    background: linear-gradient(90deg, #2c3e50 0%, #34495e 100%);
+    border-color: #34495e;
+    color: #fff;
+}
+.dialog-button.toggleLock:hover {
+    background: linear-gradient(90deg, #3a5068 0%, #5d6d7e 100%);
+    color: #ffd700;
+    border-color: #5d6d7e;
+}
+.dialog-button.sendToFront, .dialog-button.sendToBack {
+    background: linear-gradient(90deg, #1a237e 0%, #3949ab 100%);
+    border-color: #3949ab;
+    color: #fff;
+}
+.dialog-button.sendToFront:hover, .dialog-button.sendToBack:hover {
+    background: linear-gradient(90deg, #283593 0%, #5c6bc0 100%);
+    color: #ffd700;
+    border-color: #5c6bc0;
+}
+.dialog-button i {
+    font-size: 15px;
+    margin-right: 4px;
+}
 /* Rich HTML tooltip styling for d3-tip tooltips */
 .d3-tip.network-html-tooltip {
     background: #222;
