@@ -51,8 +51,8 @@ class NetworkWidget extends CampaignCodexWidget {
 
     async render() {
         return `
-            <div class="cc-widget network-widget">
-                <div class="network-controls">
+            <div class="cc-widget network-widget${!this.isGM ? ' not-gm' : ''}">
+                <div class="network-controls-float network-controls">
                     ${this.isGM ? `
                         <button type="button" class="toggle-linking" title="Toggle linking mode">
                             <i class="fas fa-link"></i> Link Mode
@@ -60,6 +60,8 @@ class NetworkWidget extends CampaignCodexWidget {
                         <button type="button" class="add-empty-node" title="Add an empty node">
                             <i class="fas fa-circle"></i> Empty Node
                         </button>
+
+                        
                         <button type="button" class="clear-network" title="Clear all nodes and links">
                             <i class="fas fa-trash"></i> Clear
                         </button>
@@ -67,13 +69,14 @@ class NetworkWidget extends CampaignCodexWidget {
                     <button type="button" class="reset-zoom" title="Reset zoom to fit all nodes">
                         <i class="fas fa-search"></i> Zoom
                     </button>
-                    <button type="button" class="lock-nodes" title="Lock/unlock all nodes">
-                        <i class="fas fa-lock"></i> <span class="lock-nodes-label">Lock </span>
-                    </button>
+
                     <button type="button" class="toggle-fullscreen" title="Toggle fullscreen">
                         <i class="fas fa-expand"></i> Fullscreen
                     </button>
                     ${this.isGM ? `
+                                            <button type="button" class="lock-nodes" title="Lock/unlock all nodes">
+                        <i class="fas fa-lock"></i> <span class="lock-nodes-label">Lock </span>
+                    </button>
                         <button type="button" class="export-network" title="Export network map as JSON">
                             <i class="fas fa-download"></i> Save
                         </button>
