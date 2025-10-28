@@ -1134,102 +1134,109 @@ _onFloatingImageContextMenu(event, d) {
 
         // Add node images - show image based on visibility rules
     // Add SVG clipPaths for each node image shape
+
+    // Helper to sanitize node IDs for use in SVG IDs/selectors
+    function sanitizeId(id) {
+        return String(id).replace(/[^a-zA-Z0-9_-]/g, '_');
+    }
+
     const nodeDefs = this.svg.select('defs').empty() ? this.svg.append('defs') : this.svg.select('defs');
-        nodeEnter.each((d, i, nodes) => {
-            const nodeGroup = d3.select(nodes[i]);
-            const nodeSize = d.nodeSize || 30;
-            let imageSize;
-            const shape = d.nodeShape || 'circle';
-            if (shape === 'star') {
-                imageSize = nodeSize * 1.5;
-            } else if (shape === 'diamond') {
-                imageSize = nodeSize * 1.8;
-            } else if (shape === 'square') {
-                imageSize = nodeSize * 2 * 0.90;
-            } else {
-                imageSize = nodeSize * 2 * 0.90;
-            }
+    nodeEnter.each((d, i, nodes) => {
+        const nodeGroup = d3.select(nodes[i]);
+        const nodeSize = d.nodeSize || 30;
+        let imageSize;
+        const shape = d.nodeShape || 'circle';
+        if (shape === 'star') {
+            imageSize = nodeSize * 1.5;
+        } else if (shape === 'diamond') {
+            imageSize = nodeSize * 1.8;
+        } else if (shape === 'square') {
+            imageSize = nodeSize * 2 * 0.90;
+        } else {
+            imageSize = nodeSize * 2 * 0.90;
+        }
 
-            // Unique clipPath id per node (by id and shape)
-            const clipId = `node-clip-${d.id || i}-${shape}`;
-            // Remove any existing clipPath for this node/shape
-            nodeDefs.select(`#${clipId}`).remove();
-            // Create the correct clipPath shape
-            if (shape === 'circle') {
-                nodeDefs.append('clipPath')
-                    .attr('id', clipId)
-                    .append('circle')
-                    .attr('cx', 0)
-                    .attr('cy', 0)
-                    .attr('r', imageSize/2);
-            } else if (shape === 'square') {
-                nodeDefs.append('clipPath')
-                    .attr('id', clipId)
-                    .append('rect')
-                    .attr('x', -imageSize/2)
-                    .attr('y', -imageSize/2)
-                    .attr('width', imageSize)
-                    .attr('height', imageSize);
-            } else if (shape === 'diamond') {
-                const points = [
-                    [0, -imageSize/2],
-                    [imageSize/2, 0],
-                    [0, imageSize/2],
-                    [-imageSize/2, 0]
-                ].map(p => p.join(',')).join(' ');
-                nodeDefs.append('clipPath')
-                    .attr('id', clipId)
-                    .append('polygon')
-                    .attr('points', points);
-            } else if (shape === 'star') {
-                // 5-pointed star
-                const outerRadius = imageSize/2;
-                const innerRadius = outerRadius * 0.4;
-                const points = [];
-                for (let j = 0; j < 10; j++) {
-                    const radius = j % 2 === 0 ? outerRadius : innerRadius;
-                    const angle = (j * Math.PI) / 5 - Math.PI / 2;
-                    points.push([
-                        radius * Math.cos(angle),
-                        radius * Math.sin(angle)
-                    ]);
-                }
-                nodeDefs.append('clipPath')
-                    .attr('id', clipId)
-                    .append('polygon')
-                    .attr('points', points.map(p => p.join(',')).join(' '));
+        // Unique, sanitized clipPath id per node (by id and shape)
+        const rawId = d.id || i;
+        const clipId = `node-clip-${sanitizeId(rawId)}-${shape}`;
+        // Remove any existing clipPath for this node/shape
+        nodeDefs.select(`#${clipId}`).remove();
+        // Create the correct clipPath shape
+        if (shape === 'circle') {
+            nodeDefs.append('clipPath')
+                .attr('id', clipId)
+                .append('circle')
+                .attr('cx', 0)
+                .attr('cy', 0)
+                .attr('r', imageSize/2);
+        } else if (shape === 'square') {
+            nodeDefs.append('clipPath')
+                .attr('id', clipId)
+                .append('rect')
+                .attr('x', -imageSize/2)
+                .attr('y', -imageSize/2)
+                .attr('width', imageSize)
+                .attr('height', imageSize);
+        } else if (shape === 'diamond') {
+            const points = [
+                [0, -imageSize/2],
+                [imageSize/2, 0],
+                [0, imageSize/2],
+                [-imageSize/2, 0]
+            ].map(p => p.join(',')).join(' ');
+            nodeDefs.append('clipPath')
+                .attr('id', clipId)
+                .append('polygon')
+                .attr('points', points);
+        } else if (shape === 'star') {
+            // 5-pointed star
+            const outerRadius = imageSize/2;
+            const innerRadius = outerRadius * 0.4;
+            const points = [];
+            for (let j = 0; j < 10; j++) {
+                const radius = j % 2 === 0 ? outerRadius : innerRadius;
+                const angle = (j * Math.PI) / 5 - Math.PI / 2;
+                points.push([
+                    radius * Math.cos(angle),
+                    radius * Math.sin(angle)
+                ]);
             }
+            nodeDefs.append('clipPath')
+                .attr('id', clipId)
+                .append('polygon')
+                .attr('points', points.map(p => p.join(',')).join(' '));
+        }
 
-            if (this._shouldShowNodeContent(d)) {
-                nodeGroup.append('image')
-                    .attr('class', 'node-image')
-                    .attr('x', -imageSize/2)
-                    .attr('y', -imageSize/2)
-                    .attr('width', imageSize)
-                    .attr('height', imageSize)
-                    .attr('clip-path', `url(#${clipId})`)
-                    .attr('href', d.img);
-            } else {
-                // Show question marks for hidden/non-observable entities
-                const questionText = this._getQuestionMarkText(d);
-                const bgColor = this._getQuestionMarkBgColor(d);
-                const fontSize = this._getQuestionMarkFontSize(d, nodeSize);
-                nodeGroup.append('circle')
-                    .attr('class', 'node-unknown')
-                    .attr('r', imageSize/2)
-                    .attr('fill', bgColor)
-                    .attr('stroke', '#333')
-                    .attr('stroke-width', 2);
-                nodeGroup.append('text')
-                    .attr('class', 'node-question')
-                    .attr('text-anchor', 'middle')
-                    .attr('dy', fontSize === '20px' ? 4 : 8)
-                    .attr('font-size', fontSize)
-                    .attr('font-weight', 'bold')
-                    .attr('fill', '#fff')
-                    .text(questionText);
-            }
-        });
+        if (this._shouldShowNodeContent(d)) {
+            nodeGroup.append('image')
+                .attr('class', 'node-image')
+                .attr('x', -imageSize/2)
+                .attr('y', -imageSize/2)
+                .attr('width', imageSize)
+                .attr('height', imageSize)
+                .attr('clip-path', `url(#${clipId})`)
+                .attr('href', d.img);
+        } else {
+            // Show question marks for hidden/non-observable entities
+            const questionText = this._getQuestionMarkText(d);
+            const bgColor = this._getQuestionMarkBgColor(d);
+            const fontSize = this._getQuestionMarkFontSize(d, nodeSize);
+            nodeGroup.append('circle')
+                .attr('class', 'node-unknown')
+                .attr('r', imageSize/2)
+                .attr('fill', bgColor)
+                .attr('stroke', '#333')
+                .attr('stroke-width', 2);
+            nodeGroup.append('text')
+                .attr('class', 'node-question')
+                .attr('text-anchor', 'middle')
+                .attr('dy', fontSize === '20px' ? 4 : 8)
+                .attr('font-size', fontSize)
+                .attr('font-weight', 'bold')
+                .attr('fill', '#fff')
+                .text(questionText);
+        }
+    });
 
 
         // Add node labels with conditional display names and positioning
