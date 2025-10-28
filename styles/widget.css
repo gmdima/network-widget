@@ -1,10 +1,11 @@
 /* DialogV1 Floating Image Edit Buttons */
 .dialog-buttons {
     display: flex;
-    gap: 10px;
+    gap: 5px;
     justify-content: flex-end;
-    margin-top: 18px;
-    padding: 8px 0 0 0;
+    margin-top: 2px;
+    padding: 2px 0 0 0;
+    flex-wrap: wrap!important;
 }
 .dialog-button {
     background: linear-gradient(90deg, #23272b 0%, #343a40 100%);
