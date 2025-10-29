@@ -232,8 +232,8 @@ this.nodesLocked = this.widgetData.nodesLocked || false;
 
             // Set up drag and drop
             this.container.addEventListener('drop', this._onDrop.bind(this));
-            this.container.addEventListener('dragover', this._onDragOver.bind(this));
-            this.container.addEventListener('dragleave', this._onDragLeave.bind(this));
+            this.container.addEventListener('dragover', this._onDragOver.bind(this), { passive: true });
+            this.container.addEventListener('dragleave', this._onDragLeave.bind(this), { passive: true });
         }
         
         // Reset zoom is available for everyone
@@ -279,7 +279,7 @@ this.nodesLocked = this.widgetData.nodesLocked || false;
                         e.stopPropagation();
                     }
                 }
-            });
+            }, { passive: true });
             container.addEventListener('drop', (e) => {
                 if (e.dataTransfer && e.dataTransfer.types.includes('text/plain')) {
                     const text = e.dataTransfer.getData('text/plain');
@@ -330,13 +330,14 @@ this.nodesLocked = this.widgetData.nodesLocked || false;
         d3.select(event.sourceEvent.target).classed('dragging', true);
     }
     _onFloatingImageDrag(event, d) {
-        d.x += event.dx;
-        d.y += event.dy;
-        this._updateNetwork(false);
+    d.x += event.dx;
+    d.y += event.dy;
+    this._updateNetwork(false);
     }
     _onFloatingImageDragEnd(event, d) {
-        d3.select(event.sourceEvent.target).classed('dragging', false);
-        this._saveNetworkData();
+    d3.select(event.sourceEvent.target).classed('dragging', false);
+    console.log('Network Widget | _saveNetworkData called after floating image drag end');
+    this._saveNetworkData();
     }
 
 
@@ -879,7 +880,7 @@ _onFloatingImageContextMenu(event, d) {
     }
 
     _updateNetwork(preserveZoom = true) {
-        console.log(`Network Widget | Updating network with ${this.nodes.length} nodes and ${this.links.length} links`);
+      //  console.log(`Network Widget | Updating network with ${this.nodes.length} nodes and ${this.links.length} links`);
         
         // Store current transform if preserving zoom
         let currentTransform = null;
@@ -956,8 +957,6 @@ _onFloatingImageContextMenu(event, d) {
 
         // Remove old links
         this.linkElements.exit().remove();
-
-        console.log(`Network Widget | Rendered ${this.linkElements.size()} link elements`);
 
         // Update nodes
         this.nodeElements = this.zoomContainer.select(".nodes")
@@ -1630,39 +1629,49 @@ _onFloatingImageContextMenu(event, d) {
         new foundry.applications.api.DialogV2({
             window: { title: `${d.name} Customization`, width: 400 },
             content: `
-                <p>Customize <strong>${d.name}</strong>:</p>
-                
-                <!-- Visibility Section -->
-                <div style="margin: 5px 0; padding: 12px;">
+
+                <div style="margin: 2px 0; padding: 2px;">
                     <h4 style="margin: 0 0 8px 0; font-size: 14px;">Visibility</h4>
                     <label style="display: flex; align-items: center; cursor: pointer;">
                         <input type="checkbox" id="hidden-checkbox" ${isHidden ? 'checked' : ''} style="margin-right: 8px;">
                         <span>Hidden from Players</span>
                     </label>
-                    <p style="margin: 5px 0 0 0; font-size: 11px; color: #666;">
+                    <p style="margin: 2px 0 0 0; font-size: 11px; color: #666;">
                         Players see black circle with "?????"
                     </p>
                 </div>
 
                 <!-- Custom Name Section -->
-                <div style="margin: 5px 0; padding: 12px;">
+                <div style="margin: 2px 0; padding: 2px;">
                     <h4 style="margin: 0 0 8px 0; font-size: 14px;">Display Name</h4>
                     <input type="text" id="custom-name" value="${d.label || d.name || ''}" placeholder="Leave empty to use original name" 
                            style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 3px;">
-                    <p style="margin: 5px 0 0 0; font-size: 11px; color: #666;">
+                    <p style="margin: 2px 0 0 0; font-size: 11px; color: #666;">
                         Custom label for this node (visible to everyone)
                     </p>
                     ${d.type === 'Empty' ? `
-                    <div style="margin-top: 10px;">
+                    <div style="margin-top: 4px;">
                         <label style="display: block; font-size: 12px; margin-bottom: 3px;">Text Color:</label>
                         <input type="color" id="empty-text-color" value="${d.textColor || '#444444'}" style="width: 100%; height: 30px; border: 1px solid #ccc; border-radius: 3px;">
                     </div>
                     ` : ''}
                 </div>
 
+                <!-- Image URL Section for non-empty nodes -->
+                ${d.type !== 'Empty' ? `
+                <div style="margin: 2px 0; padding: 2px;">
+                    <h4 style="margin: 0 0 4px 0; font-size: 14px;">Image URL</h4>
+                    <input type="text" id="node-img-url" value="${d.img || ''}" placeholder="Paste image URL or path here" 
+                           style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 3px;">
+                    <p style="margin: 2px 0 0 0; font-size: 11px; color: #666;">
+                        Change the image for this node (actor, item, scene, etc.)
+                    </p>
+                </div>
+                ` : ''}
+
                 <!-- Appearance Section -->
-                <div style="margin: 5px 0; padding: 12px;">
-                    <h4 style="margin: 0 0 8px 0; font-size: 14px;">Appearance</h4>
+                <div style="margin: 5px 0; padding: 2px;">
+                    <h4 style="margin: 0 0 2px 0; font-size: 14px;">Appearance</h4>
                     
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
                         <div>
@@ -1694,7 +1703,7 @@ _onFloatingImageContextMenu(event, d) {
                 </div>
 
                 <!-- Tooltip Section -->
-                <div style="margin: 5px 0; padding: 12px;">
+                <div style="margin: 5px 0; padding: 2px;">
                     <h4 style="margin: 0 0 8px 0; font-size: 14px;">Custom Tooltip</h4>
                     <textarea id="custom-tooltip" placeholder="Leave empty to use display name" 
                               style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 3px; height: 60px; resize: vertical;">${d.customTooltip || ''}</textarea>
@@ -1777,6 +1786,13 @@ _onFloatingImageContextMenu(event, d) {
                             }
                             if (d.customTooltip !== customTooltip) {
                                 d.customTooltip = customTooltip;
+                                hasChanges = true;
+                            }
+                        } else {
+                            // For non-empty nodes, allow changing the image URL
+                            const imgUrl = dialog.element.querySelector('#node-img-url')?.value.trim() || '';
+                            if (d.img !== imgUrl) {
+                                d.img = imgUrl;
                                 hasChanges = true;
                             }
                         }
@@ -2124,7 +2140,7 @@ _onFloatingImageContextMenu(event, d) {
     }
 
     _onDragOver(event) {
-        event.preventDefault();
+        //event.preventDefault();
         event.dataTransfer.dropEffect = "copy";
         event.currentTarget.classList.add("drag-over");
     }
