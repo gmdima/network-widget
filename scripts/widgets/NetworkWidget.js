@@ -1630,32 +1630,32 @@ _onFloatingImageContextMenu(event, d) {
             window: { title: `${d.name} Customization`, width: 400 },
             content: `
 
-                <div style="margin: 2px 0; padding: 2px;">
-                    <h4 style="margin: 0 0 8px 0; font-size: 14px;">Visibility</h4>
-                    <label style="display: flex; align-items: center; cursor: pointer;">
-                        <input type="checkbox" id="hidden-checkbox" ${isHidden ? 'checked' : ''} style="margin-right: 8px;">
-                        <span>Hidden from Players</span>
-                    </label>
-                    <p style="margin: 2px 0 0 0; font-size: 11px; color: #666;">
-                        Players see black circle with "?????"
-                    </p>
-                </div>
-
-                <!-- Custom Name Section -->
-                <div style="margin: 2px 0; padding: 2px;">
-                    <h4 style="margin: 0 0 8px 0; font-size: 14px;">Display Name</h4>
-                    <input type="text" id="custom-name" value="${d.label || d.name || ''}" placeholder="Leave empty to use original name" 
-                           style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 3px;">
-                    <p style="margin: 2px 0 0 0; font-size: 11px; color: #666;">
-                        Custom label for this node (visible to everyone)
-                    </p>
-                    ${d.type === 'Empty' ? `
-                    <div style="margin-top: 4px;">
-                        <label style="display: block; font-size: 12px; margin-bottom: 3px;">Text Color:</label>
-                        <input type="color" id="empty-text-color" value="${d.textColor || '#444444'}" style="width: 100%; height: 30px; border: 1px solid #ccc; border-radius: 3px;">
-                    </div>
-                    ` : ''}
-                </div>
+<div style="display: flex; gap: 12px; align-items: flex-start; margin: 2px 0; padding: 2px;">
+    <div style="flex: 65 1 0;">
+        <h4 style="margin: 0 0 8px 0; font-size: 14px;">Display Name</h4>
+        <input type="text" id="custom-name" value="${d.label || d.name || ''}" placeholder="Leave empty to use original name" 
+               style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 3px;">
+        <p style="margin: 2px 0 0 0; font-size: 11px; color: #666;">
+            Custom label for this node (visible to everyone)
+        </p>
+        ${d.type === 'Empty' ? `
+        <div style="margin-top: 4px;">
+            <label style="display: block; font-size: 12px; margin-bottom: 3px;">Text Color:</label>
+            <input type="color" id="empty-text-color" value="${d.textColor || '#444444'}" style="width: 100%; height: 30px; border: 1px solid #ccc; border-radius: 3px;">
+        </div>
+        ` : ''}
+    </div>
+    <div style="flex: 35 1 0; display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start;">
+        <h4 style="margin: 0 0 8px 0; font-size: 14px;">Visibility</h4>
+        <label style="display: flex; align-items: center; cursor: pointer;">
+            <input type="checkbox" id="hidden-checkbox" ${isHidden ? 'checked' : ''} style="margin-right: 8px;">
+            <span>Hidden from Players</span>
+        </label>
+        <p style="margin: 2px 0 0 0; font-size: 11px; color: #666;">
+            Players see black circle with "?????"
+        </p>
+    </div>
+</div>
 
                 <!-- Image URL Section for non-empty nodes -->
                 ${d.type !== 'Empty' ? `
@@ -1672,14 +1672,13 @@ _onFloatingImageContextMenu(event, d) {
                 <!-- Appearance Section -->
                 <div style="margin: 5px 0; padding: 2px;">
                     <h4 style="margin: 0 0 2px 0; font-size: 14px;">Appearance</h4>
-                    
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
-                        <div>
+                    <div style="display: flex; gap: 12px; margin-bottom: 10px; align-items: flex-end;">
+                        <div style="flex: 1 1 0; min-width: 90px;">
                             <label style="display: block; font-size: 12px; margin-bottom: 3px;">Color:</label>
                             <input type="color" id="node-color" value="${d.nodeColor || '#69b3a2'}" 
                                    style="width: 100%; height: 30px; border: 1px solid #ccc; border-radius: 3px;">
                         </div>
-                        <div>
+                        <div style="flex: 1 1 0; min-width: 120px;">
                             <label style="display: block; font-size: 12px; margin-bottom: 3px;">Size:</label>
                             <select id="node-size" style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 3px;">
                                 <option value="20" ${(d.nodeSize || 30) === 20 ? 'selected' : ''}>Small (20px)</option>
@@ -1689,16 +1688,15 @@ _onFloatingImageContextMenu(event, d) {
                                 <option value="70" ${(d.nodeSize || 30) === 70 ? 'selected' : ''}>XXL (70px)</option>
                             </select>
                         </div>
-                    </div>
-                    
-                    <div>
-                        <label style="display: block; font-size: 12px; margin-bottom: 3px;">Shape:</label>
-                        <select id="node-shape" style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 3px;">
-                            <option value="circle" ${(d.nodeShape || 'circle') === 'circle' ? 'selected' : ''}>Circle</option>
-                            <option value="square" ${(d.nodeShape || 'circle') === 'square' ? 'selected' : ''}>Square</option>
-                            <option value="diamond" ${(d.nodeShape || 'circle') === 'diamond' ? 'selected' : ''}>Diamond</option>
-                            <option value="star" ${(d.nodeShape || 'circle') === 'star' ? 'selected' : ''}>Star</option>
-                        </select>
+                        <div style="flex: 1 1 0; min-width: 120px;">
+                            <label style="display: block; font-size: 12px; margin-bottom: 3px;">Shape:</label>
+                            <select id="node-shape" style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 3px;">
+                                <option value="circle" ${(d.nodeShape || 'circle') === 'circle' ? 'selected' : ''}>Circle</option>
+                                <option value="square" ${(d.nodeShape || 'circle') === 'square' ? 'selected' : ''}>Square</option>
+                                <option value="diamond" ${(d.nodeShape || 'circle') === 'diamond' ? 'selected' : ''}>Diamond</option>
+                                <option value="star" ${(d.nodeShape || 'circle') === 'star' ? 'selected' : ''}>Star</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
 
@@ -1706,36 +1704,34 @@ _onFloatingImageContextMenu(event, d) {
                 <div style="margin: 5px 0; padding: 2px;">
                     <h4 style="margin: 0 0 8px 0; font-size: 14px;">Custom Tooltip</h4>
                     <textarea id="custom-tooltip" placeholder="Leave empty to use display name" 
-                              style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 3px; height: 60px; resize: vertical;">${d.customTooltip || ''}</textarea>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
-                        <div>
-                            <label style="display: block; font-size: 12px; margin-bottom: 3px;">Tooltip Background:</label>
-                            <input type="color" id="tooltip-bg" value="${d.tooltipBg || '#222222'}" style="width: 100%; height: 30px; border: 1px solid #ccc; border-radius: 3px;">
+                              style="width: 100%; padding: 4px; border: 1px solid #ccc; border-radius: 3px; height: 48px; resize: vertical; font-size: 13px;">${d.customTooltip || ''}</textarea>
+                    <div style="display: flex; gap: 10px; margin-top: 8px; align-items: flex-end;">
+                        <div style="flex: 1 1 0; min-width: 80px;">
+                            <label style="display: block; font-size: 12px; margin-bottom: 2px;">Tooltip Background:</label>
+                            <input type="color" id="tooltip-bg" value="${d.tooltipBg || '#222222'}" style="width: 32px; height: 24px; border: 1px solid #ccc; border-radius: 3px;">
                         </div>
-                        <div>
-                            <label style="display: block; font-size: 12px; margin-bottom: 3px;">Tooltip Text Color:</label>
-                            <input type="color" id="tooltip-color" value="${d.tooltipColor || '#ffffff'}" style="width: 100%; height: 30px; border: 1px solid #ccc; border-radius: 3px;">
+                        <div style="flex: 1 1 0; min-width: 80px;">
+                            <label style="display: block; font-size: 12px; margin-bottom: 2px;">Tooltip Text Color:</label>
+                            <input type="color" id="tooltip-color" value="${d.tooltipColor || '#ffffff'}" style="width: 32px; height: 24px; border: 1px solid #ccc; border-radius: 3px;">
                         </div>
-                    </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
-                        <div>
-                            <label style="display: block; font-size: 12px; margin-bottom: 3px;">Tooltip Border:</label>
+                        <div style="flex: 2 1 0; min-width: 120px;">
+                            <label style="display: block; font-size: 12px; margin-bottom: 2px;">Tooltip Border:</label>
                             <div style="display: flex; gap: 4px; align-items: center;">
-                                <input type="text" id="tooltip-border-width" value="${(d.tooltipBorder||'1px solid #888').split(' ')[0]}" style="width: 50px; padding: 4px; border: 1px solid #ccc; border-radius: 3px;" placeholder="e.g. 1px">
-                                <select id="tooltip-border-style" style="width: 70px;">
+                                <input type="text" id="tooltip-border-width" value="${(d.tooltipBorder||'1px solid #888').split(' ')[0]}" style="width: 38px; padding: 2px; border: 1px solid #ccc; border-radius: 3px; font-size: 13px;" placeholder="1px">
+                                <select id="tooltip-border-style" style="width: 60px; font-size: 13px;">
                                     ${['solid','dashed','dotted','double','groove','ridge','inset','outset','none'].map(style => `<option value='${style}'${(d.tooltipBorder||'1px solid #888').split(' ')[1]===style?' selected':''}>${style}</option>`).join('')}
                                 </select>
-                                <input type="color" id="tooltip-border-color" value="${(() => {let c=(d.tooltipBorder||'1px solid #888').split(' ')[2];if(!c||!c.startsWith('#'))return'#888888';return c;})()}" style="width: 36px; height: 28px; border: 1px solid #ccc; border-radius: 3px;">
+                                <input type="color" id="tooltip-border-color" value="${(() => {let c=(d.tooltipBorder||'1px solid #888').split(' ')[2];if(!c||!c.startsWith('#'))return'#888888';return c;})()}" style="width: 28px; height: 22px; border: 1px solid #ccc; border-radius: 3px;">
                             </div>
                         </div>
-                        <div>
-                            <label style="display: block; font-size: 12px; margin-bottom: 3px;">Tooltip Border Radius:</label>
-                            <input type="text" id="tooltip-radius" value="${d.tooltipRadius || '6px'}" style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 3px;" placeholder="e.g. 6px">
+                        <div style="flex: 1 1 0; min-width: 80px;">
+                            <label style="display: block; font-size: 12px; margin-bottom: 2px;">Tooltip Border Radius:</label>
+                            <input type="text" id="tooltip-radius" value="${d.tooltipRadius || '6px'}" style="width: 60px; padding: 2px; border: 1px solid #ccc; border-radius: 3px; font-size: 13px;" placeholder="6px">
                         </div>
-                    </div>
-                    <div style="margin-top: 10px;">
-                        <label style="display: block; font-size: 12px; margin-bottom: 3px;">Tooltip Font Size:</label>
-                        <input type="text" id="tooltip-fontsize" value="${d.tooltipFontSize || '14px'}" style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 3px;" placeholder="e.g. 14px">
+                        <div style="flex: 1 1 0; min-width: 80px;">
+                            <label style="display: block; font-size: 12px; margin-bottom: 2px;">Tooltip Font Size:</label>
+                            <input type="text" id="tooltip-fontsize" value="${d.tooltipFontSize || '14px'}" style="width: 48px; padding: 2px; border: 1px solid #ccc; border-radius: 3px; font-size: 13px;" placeholder="14px">
+                        </div>
                     </div>
                     <p style="margin: 5px 0 0 0; font-size: 11px; color: #666;">
                         Custom hover text and style for this node
