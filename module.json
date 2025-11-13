@@ -1,7 +1,7 @@
 {
   "id": "network-widget",
   "title": "Network Widget",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "esmodules": ["scripts/main.js"],
   "languages": [
     {
