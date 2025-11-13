@@ -1,7 +1,7 @@
 {
   "id": "network-widget",
   "title": "Network Widget",
-  "version": "1.16",
+  "version": "1.171",
   "esmodules": ["scripts/main.js"],
   "languages": [
     {
@@ -16,7 +16,7 @@
   },
 
   "manifest": "https://github.com/gmdima/network-widget/releases/latest/download/module.json",
-  "download": "https://github.com/gmdima/network-widget/releases/download/1.16/module.zip",
+  "download": "https://github.com/gmdima/network-widget/releases/download/1.171/module.zip",
   "url": "https://github.com/gmdima/network-widget",
   "readme": "",
 
