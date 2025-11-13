@@ -1,4 +1,22 @@
 /* Position controls differently for non-GMs (less buttons, move lower/right) */
+.network-widget .network-controls-float {
+    position: absolute;
+    top: 131px;
+    width: 120px;
+    left: 58px;
+    z-index: 10;
+    display: flex
+;
+    flex-direction: column;
+    gap: 3px;
+    border-radius: 10px;
+    padding: 4px 4px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.10);
+    opacity: 0.10;
+    transition: opacity 0.35s;
+    pointer-events: auto;
+}
+
 .network-widget.not-gm .network-controls-float {
     top: 150px;
     left: 61px;
@@ -416,22 +434,7 @@
 
 
 /* Floating network controls over the canvas */
-.network-widget .network-controls-float {
-    position: absolute;
-    top: 65px;
-    left: 25px;
-    z-index: 10;
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    
-    border-radius: 10px;
-    padding: 4px 4px;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.10);
-    opacity: 0.10;
-    transition: opacity 0.35s;
-    pointer-events: auto;
-}
+
 .network-widget .network-controls-float:hover,
 .network-widget .network-controls-float:focus-within {
     opacity: 1;

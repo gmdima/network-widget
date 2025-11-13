@@ -47,7 +47,6 @@ Hooks.once("init", function () {
     }
 });
 import { createNetworkWidget } from "./widgets/NetworkWidget.js";
-import { createTimeLineWidget } from "./widgets/TimeLineWidget.js"; 
 
 Hooks.once("ready", async function () {
     const ccApi = game.modules.get('campaign-codex')?.api;
@@ -59,10 +58,10 @@ Hooks.once("ready", async function () {
     const { CampaignCodexWidget, widgetManager } = ccApi;
 
     const NetworkWidget = createNetworkWidget(CampaignCodexWidget);
-    const TimeLineWidget = createTimeLineWidget(CampaignCodexWidget);
+
 
     widgetManager.registerWidget("network", NetworkWidget);
-    widgetManager.registerWidget("timeLine", TimeLineWidget);
+
     
     console.log("My Module | Custom widgets registered with Campaign Codex.");
 });

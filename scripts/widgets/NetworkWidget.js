@@ -24,6 +24,10 @@ class NetworkWidget extends CampaignCodexWidget {
         this.selectedFloatingImageId = null;
         this.isFullscreen = false;
         this.fullscreenOverlay = null;
+    this._lockForcedByLinkMode = false;
+    this._pendingFitTimeout = null;
+    this._pendingInitialFit = true;
+    this._restoredZoomFromState = false;
     }
 
     // Static method to store zoom state
@@ -246,6 +250,7 @@ this.nodesLocked = this.widgetData.nodesLocked || false;
             this.nodesLocked = !!this.widgetData.nodesLocked;
             this._updateLockNodesButton(lockBtn);
             lockBtn.addEventListener('click', async () => {
+                this._lockForcedByLinkMode = false;
                 this.nodesLocked = !this.nodesLocked;
                 this.widgetData.nodesLocked = this.nodesLocked;
                 await this._saveNetworkData();
@@ -253,6 +258,9 @@ this.nodesLocked = this.widgetData.nodesLocked || false;
                 this.nodesLocked = !!this.widgetData.nodesLocked;
                 this._updateLockNodesButton(lockBtn);
                 this._updateNetwork();
+                if (!this.nodesLocked && this.linkingMode) {
+                    this._toggleLinkingMode();
+                }
             });
         }
         
@@ -689,6 +697,8 @@ _onFloatingImageContextMenu(event, d) {
         // Create zoom behavior
         this.zoom = d3.zoom()
             .scaleExtent([0.1, 4])
+            .extent([[0, 0], [this.width, this.height]])
+            .translateExtent([[0, 0], [this.width, this.height]])
             .on("zoom", (event) => {
                 this.zoomContainer.attr("transform", event.transform);
             });
@@ -698,15 +708,20 @@ _onFloatingImageContextMenu(event, d) {
 
         // Create main container group that will be transformed by zoom
         this.zoomContainer = this.svg.append("g").attr("class", "zoom-container");
+    this._updateZoomExtents();
 
         // Apply saved zoom state immediately to prevent flicker
         const savedZoomState = NetworkWidget.getZoomState(this.widgetId);
         if (savedZoomState) {
             console.log('Network Widget | Applying saved zoom state during initialization');
             this.svg.call(this.zoom.transform, savedZoomState);
-            // Clear the saved state since we've applied it
+            this._restoredZoomFromState = true;
+            this._pendingInitialFit = false;
             if (NetworkWidget._zoomStates) {
-                NetworkWidget._zoomStates.delete(this.widgetId);
+                const existing = NetworkWidget._zoomStates.get(this.widgetId);
+                if (existing) {
+                    existing.timestamp = Date.now();
+                }
             }
         }
 
@@ -767,7 +782,31 @@ _onFloatingImageContextMenu(event, d) {
                 this.simulation.force("center", d3.forceCenter(this.width / 2, this.height / 2));
                 this.simulation.alpha(0.3).restart();
             }
+
+            this._updateZoomExtents();
         }
+    }
+
+    _updateZoomExtents(padding = 80) {
+        if (!this.zoom) return;
+
+        if (!this.nodes || this.nodes.length === 0) {
+            const buffer = Math.max(this.width, this.height);
+            this.zoom.translateExtent([[-buffer, -buffer], [this.width + buffer, this.height + buffer]]);
+            this.zoom.extent([[0, 0], [this.width, this.height]]);
+            return;
+        }
+
+        const bounds = this._calculateNodeBounds();
+        const extraX = Math.max(this.width, (bounds.maxX - bounds.minX) + padding * 2);
+        const extraY = Math.max(this.height, (bounds.maxY - bounds.minY) + padding * 2);
+        const minX = bounds.minX - padding - extraX;
+        const minY = bounds.minY - padding - extraY;
+        const maxX = bounds.maxX + padding + extraX;
+        const maxY = bounds.maxY + padding + extraY;
+
+        this.zoom.translateExtent([[minX, minY], [maxX, maxY]]);
+        this.zoom.extent([[0, 0], [this.width, this.height]]);
     }
 
     _loadNetworkData() {
@@ -876,7 +915,8 @@ _onFloatingImageContextMenu(event, d) {
             this.nodeMap.set(node.uuid, node);
         });
 
-        this._updateNetwork(false); // Allow initial zoom setup
+    this._updateNetwork(!this._pendingInitialFit); // Auto-fit only once when needed
+    this._pendingInitialFit = false;
     }
 
     _updateNetwork(preserveZoom = true) {
@@ -899,12 +939,26 @@ _onFloatingImageContextMenu(event, d) {
             try { linkLabelOutlineColor = game.settings.get('network-widget', 'linkLabelOutlineColor') || '#c00606ff'; } catch {}
         }
 
-        // Update links
-        this.linkElements = this.zoomContainer.select(".links")
-            .selectAll("g")
-            .data(this.links);
+        const getEndpointKey = (endpoint) => {
+            if (!endpoint) return 'null';
+            if (typeof endpoint === 'object') {
+                return endpoint.id ?? endpoint.uuid ?? endpoint._id ?? JSON.stringify(endpoint);
+            }
+            return endpoint;
+        };
+        const linkKeyFn = (link) => {
+            const parts = [getEndpointKey(link.source), getEndpointKey(link.target)].sort();
+            return parts.join('__');
+        };
 
-        const linkEnter = this.linkElements.enter()
+        // Update links
+        let linkSelection = this.zoomContainer.select(".links")
+            .selectAll("g")
+            .data(this.links, linkKeyFn);
+
+        linkSelection.exit().remove();
+
+        const linkEnter = linkSelection.enter()
             .append("g")
             .attr("class", "link-group");
 
@@ -914,12 +968,19 @@ _onFloatingImageContextMenu(event, d) {
             .attr("stroke", linkColor)
             .attr("stroke-width", 2);
 
-
         // Add link labels with outline
         linkEnter.append("text")
             .attr("class", "link-label")
             .attr("text-anchor", "middle")
-            .attr("dy", -5)
+            .attr("dy", -5);
+
+        this.linkElements = linkEnter.merge(linkSelection);
+
+        this.linkElements.select("line.link")
+            .attr("stroke", linkColor)
+            .attr("stroke-width", 2);
+
+        this.linkElements.select("text.link-label")
             .text(d => d.label || (this.isGM ? 'Click to label' : ''))
             .classed("clickable", this.isGM)
             .classed("empty", d => !d.label)
@@ -936,47 +997,26 @@ _onFloatingImageContextMenu(event, d) {
                 }
             });
 
-        this.linkElements = linkEnter.merge(this.linkElements);
-
-        // Update all link labels (both new and existing)
-
-        this.linkElements.selectAll(".link-label")
-            .text(d => d.label || (this.isGM ? 'Click to label' : ''))
-            .classed("clickable", this.isGM)
-            .classed("empty", d => !d.label)
-            .style("cursor", this.isGM ? "pointer" : "default")
-            .style("fill", linkColor)
-            .style("stroke", linkLabelOutlineColor)
-            .style("stroke-width", 3)
-            .style("paint-order", "stroke")
-            .style("stroke-linejoin", "round");
-
-        // Update all link lines
-        this.linkElements.selectAll(".link")
-            .attr("stroke", linkColor);
-
-        // Remove old links
-        this.linkElements.exit().remove();
+        const nodeKeyFn = (node) => node?.id ?? node?.uuid ?? node?._id ?? JSON.stringify(node);
 
         // Update nodes
-        this.nodeElements = this.zoomContainer.select(".nodes")
+        let nodeSelection = this.zoomContainer.select(".nodes")
             .selectAll("g")
-            .data(this.nodes);
+            .data(this.nodes, nodeKeyFn);
 
-        const nodeEnter = this.nodeElements.enter()
+        nodeSelection.exit().remove();
+
+        const nodeEnter = nodeSelection.enter()
             .append("g")
             .attr("class", "node-group");
 
         // Always remove drag behavior first
         nodeEnter.on('.drag', null);
-        // Only add drag behavior for GMs, unless nodesLocked is true
-        if (this.isGM && !this.nodesLocked) {
-            nodeEnter.call(d3.drag()
-                .on("start", this._dragstarted.bind(this))
-                .on("drag", this._dragged.bind(this))
-                .on("end", this._dragended.bind(this)));
-        }
-        // Also update drag for all existing nodes
+
+        const nodeMerge = nodeEnter.merge(nodeSelection);
+        this.nodeElements = nodeMerge;
+
+        // Update drag behavior for all nodes
         this.nodeElements.on('.drag', null);
         if (this.isGM && !this.nodesLocked) {
             this.nodeElements.call(d3.drag()
@@ -1057,7 +1097,7 @@ _onFloatingImageContextMenu(event, d) {
         function hideTooltip() {
             tooltip.style('visibility', 'hidden');
         }
-        nodeEnter
+        this.nodeElements
             .on('mouseover', function(event, d) {
                 if (!this.linkingMode) showTooltip.call(this, event, d);
             }.bind(this))
@@ -1068,8 +1108,8 @@ _onFloatingImageContextMenu(event, d) {
             .on('mousedown', hideTooltip)
             .on('mouseup',  hideTooltip)
             .on('touchstart', hideTooltip);
-        // Remove any SVG <title> (for update)
-        nodeEnter.select('title').remove();
+    // Remove any SVG <title> (for update)
+    this.nodeElements.select('title').remove();
 
         // Add node shapes with conditional styling
         nodeEnter.each((d, i, nodes) => {
@@ -1251,9 +1291,6 @@ _onFloatingImageContextMenu(event, d) {
             .attr("fill", nodeLabelColor)
             .text(d => d.type === 'Empty' ? d.label || d.name : this._getNodeDisplayName(d));
 
-        this.nodeElements = nodeEnter.merge(this.nodeElements);
-
-
         // Update existing nodes to reflect any changes in customization
         this.nodeElements.selectAll('.node-label')
             .text(d => d.type === 'Empty' ? d.label || d.name : this._getNodeDisplayName(d))
@@ -1281,8 +1318,6 @@ _onFloatingImageContextMenu(event, d) {
             });
 
         // Remove old nodes
-        this.nodeElements.exit().remove();
-
         // Add click handlers for GM
         if (this.isGM) {
             this.nodeElements.on("click", this._onNodeClick.bind(this));
@@ -1454,17 +1489,43 @@ _onFloatingImageContextMenu(event, d) {
         images.exit().remove();
 
 
+        if (this.linkingMode) {
+            this.nodes.forEach((node) => {
+                node._linkingPinned = true;
+                node.fx = node.x;
+                node.fy = node.y;
+                node.vx = 0;
+                node.vy = 0;
+            });
+        }
+
+        this._updateZoomExtents();
+
         // Update simulation
         this.simulation.nodes(this.nodes);
         this.simulation.force("link").links(this.links);
         
-        // Use a gentler alpha restart to avoid jarring movements
-        this.simulation.alpha(0.3).restart();
+        if (this.linkingMode) {
+            this.simulation.alpha(0);
+            this.simulation.stop();
+            this._tick();
+        } else {
+            // Use a gentler alpha restart to avoid jarring movements
+            this.simulation.alpha(0.3).restart();
+        }
         
         // Restore the zoom transform if preserving zoom
         if (preserveZoom && currentTransform && this.svg) {
             // Apply transform without animation to avoid jarring movement
             this.svg.call(this.zoom.transform, currentTransform);
+        } else if (!preserveZoom) {
+            if (this._pendingFitTimeout) {
+                cancelAnimationFrame(this._pendingFitTimeout);
+            }
+            this._pendingFitTimeout = requestAnimationFrame(() => {
+                this._pendingFitTimeout = null;
+                this._resetZoom();
+            });
         }
     }
 
@@ -1485,6 +1546,8 @@ _onFloatingImageContextMenu(event, d) {
 
         // Update node positions
         this.nodeElements.attr("transform", d => `translate(${d.x},${d.y})`);
+
+        this._updateZoomExtents();
     }
 
     _dragstarted(event, d) {
@@ -1911,12 +1974,25 @@ _onFloatingImageContextMenu(event, d) {
     async _toggleLink(nodeA, nodeB) {
         console.log(`Network Widget | Attempting to toggle link between ${nodeA.name} and ${nodeB.name}`);
         console.log(`Network Widget | Current links before toggle:`, this.links.length);
-        
-        // Check if link already exists
-        const existingLinkIndex = this.links.findIndex(link => 
-            (link.source === nodeA && link.target === nodeB) ||
-            (link.source === nodeB && link.target === nodeA)
-        );
+
+        const getEndpointId = (endpoint) => {
+            if (!endpoint) return null;
+            if (typeof endpoint === "object") {
+                return endpoint.id ?? endpoint.uuid ?? endpoint._id ?? null;
+            }
+            return endpoint;
+        };
+
+        const nodeAId = getEndpointId(nodeA);
+        const nodeBId = getEndpointId(nodeB);
+
+        // Check if link already exists (regardless of object reference)
+        const existingLinkIndex = this.links.findIndex((link) => {
+            const sourceId = getEndpointId(link.source);
+            const targetId = getEndpointId(link.target);
+            return (sourceId === nodeAId && targetId === nodeBId) ||
+                   (sourceId === nodeBId && targetId === nodeAId);
+        });
 
         if (existingLinkIndex !== -1) {
             // Remove existing link
@@ -1952,32 +2028,95 @@ _onFloatingImageContextMenu(event, d) {
 
     async _promptForLinkLabel(message) {
         return new Promise((resolve) => {
-            new foundry.applications.api.DialogV2({
-                window: { title: "Relationship Type" },
+            let finished = false;
+            const finish = (value) => {
+                if (finished) return;
+                finished = true;
+                resolve(value);
+            };
+            let dialogApp;
+            const tryBringToFront = (attempt = 0) => {
+                if (!dialogApp) return;
+                const maxAttempts = 8;
+                if (attempt > maxAttempts) return;
+
+                const element = dialogApp.element?.[0] || dialogApp.element || null;
+                if (!dialogApp.rendered || !element) {
+                    setTimeout(() => tryBringToFront(attempt + 1), 25);
+                    return;
+                }
+
+                try {
+                    const bringFn = typeof dialogApp.bringToFront === "function"
+                        ? dialogApp.bringToFront.bind(dialogApp)
+                        : (typeof dialogApp.bringToTop === "function"
+                            ? dialogApp.bringToTop.bind(dialogApp)
+                            : null);
+                    if (bringFn) {
+                        bringFn();
+                    }
+                    if (element.style) {
+                        const windows = Object.values(ui.windows ?? {});
+                        const highestZ = windows.reduce((max, app) => {
+                            const z = app?.position?.zIndex ?? 0;
+                            return z > max ? z : max;
+                        }, 0);
+                        const current = parseInt(element.style.zIndex ?? "0", 10) || 0;
+                        const targetZ = Math.max(current, highestZ + 10);
+                        if (targetZ !== current) {
+                            element.style.zIndex = `${targetZ}`;
+                        }
+                    }
+                } catch (err) {
+                    console.warn('Network Widget | bringToFront failed', err);
+                }
+
+                if (attempt < maxAttempts) {
+                    setTimeout(() => tryBringToFront(attempt + 1), 150);
+                }
+            };
+
+            dialogApp = new foundry.applications.api.DialogV2({
+                window: { title: "Relationship Type", modal: true },
                 content: `
                     <div style="margin-bottom: 15px;">
                         <p>${message}</p>
                         <input type="text" id="link-label-input" placeholder="e.g., friend, family, ally, enemy..." 
-                               style="width: 100%; padding: 8px, 8px, 8px, 0;">
+                               style="width: 100%; padding: 8px;">
                     </div>
                 `,
                 buttons: [
                     {
                         action: "confirm",
                         label: "Create Link",
-                        callback: (event, button, dialog) => {
-                            const input = dialog.element.querySelector('#link-label-input');
-                            resolve(input ? input.value.trim() : '');
+                        callback: (event, button, dialogInstance) => {
+                            const input = dialogInstance.element.querySelector('#link-label-input');
+                            finish(input ? input.value.trim() : '');
+                            dialogInstance.close();
                         }
                     },
                     {
                         action: "cancel",
                         label: "Cancel",
-                        callback: () => resolve(null)
+                        callback: (event, button, dialogInstance) => {
+                            finish(null);
+                            dialogInstance.close();
+                        }
                     }
                 ],
-                default: "confirm"
-            }).render(true);
+                default: "confirm",
+                render: (html) => {
+                    const input = html[0]?.querySelector?.('#link-label-input');
+                    if (input) {
+                        input.focus();
+                        input.select();
+                    }
+                    tryBringToFront();
+                },
+                close: () => finish(null)
+            });
+            dialogApp.render(true);
+            tryBringToFront();
         });
     }
 
@@ -2070,6 +2209,7 @@ _onFloatingImageContextMenu(event, d) {
         this.linkingMode = !this.linkingMode;
         
         const button = this.container.parentElement.querySelector('.toggle-linking');
+        const lockBtn = this.container.parentElement.querySelector('.lock-nodes');
         if (button) {
             button.classList.toggle('active', this.linkingMode);
             if (this.linkingMode) {
@@ -2092,9 +2232,43 @@ _onFloatingImageContextMenu(event, d) {
 
         // Save the linking mode state and clear selected node if needed
         this.widgetData.linkingMode = this.linkingMode;
-
         this.widgetData.selectedNodeId = this.linkingMode && this.selectedNode ? this.selectedNode.id : null;
-        
+
+        let lockStateChanged = false;
+        if (this.linkingMode) {
+            if (!this.nodesLocked) {
+                this.nodesLocked = true;
+                this.widgetData.nodesLocked = true;
+                this._lockForcedByLinkMode = true;
+                this._updateLockNodesButton(lockBtn);
+                lockStateChanged = true;
+            } else {
+                this._lockForcedByLinkMode = false;
+            }
+        } else if (this._lockForcedByLinkMode) {
+            this.nodesLocked = false;
+            this.widgetData.nodesLocked = false;
+            this._lockForcedByLinkMode = false;
+            this._updateLockNodesButton(lockBtn);
+            lockStateChanged = true;
+        }
+
+        if (lockStateChanged) {
+            this._updateNetwork();
+        } else if (this.simulation) {
+            if (this.linkingMode) {
+                this.simulation.alpha(0);
+                this.simulation.stop();
+                this._tick();
+            } else if (this.nodesLocked) {
+                this.simulation.alpha(0);
+                this.simulation.stop();
+                this._tick();
+            } else {
+                this.simulation.alpha(0.3).restart();
+            }
+        }
+
         // Save data to persist state
         this._saveNetworkData();
 
@@ -2341,7 +2515,20 @@ _onFloatingImageContextMenu(event, d) {
 
         
         this.widgetData = dataToSave;
-        await this.saveData(this.widgetData);
+
+        const disableRenderOptions = { render: false, diff: false };
+        let saveAttempted = false;
+        if (typeof this.saveData === 'function' && this.saveData.length >= 2) {
+            try {
+                await this.saveData(this.widgetData, disableRenderOptions);
+                saveAttempted = true;
+            } catch (error) {
+                console.warn('Network Widget | saveData render:false unsupported, falling back', error);
+            }
+        }
+        if (!saveAttempted) {
+            await this.saveData(this.widgetData);
+        }
         
         console.log('Network Widget | Data saved successfully');
     }
@@ -2755,6 +2942,10 @@ _updateLockNodesButton(lockBtn) {
         if (this.simulation) {
             this.simulation.stop();
             this.simulation = null;
+        }
+        if (this._pendingFitTimeout) {
+            cancelAnimationFrame(this._pendingFitTimeout);
+            this._pendingFitTimeout = null;
         }
         await super.close();
     }
